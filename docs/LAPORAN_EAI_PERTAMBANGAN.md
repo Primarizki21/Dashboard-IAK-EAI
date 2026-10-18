@@ -166,14 +166,23 @@ Melalui dashboard EVD (*Exploratory Visual Dashboard*), diperoleh temuan-temuan 
 
 ## 7. FITUR APLIKASI DASHBOARD & PANDUAN PENGGUNAAN
 
-### 7.1 Fitur Utama Antarmuka Web
-1. **Sistem Login & Proteksi Sesi:** Otentikasi berbasis token dengan modal login interaktif untuk akun Administrator (`admin` / `admin123`).
-2. **Executive Overview (Ringkasan KPI):** Kartu ringkasan metrik instan, grafik neraca pasokan batubara (PDF), dan grafik cadangan batubara per provinsi (PDF).
-3. **Global Trade Analytics:** Visualisasi time-series interaktif volume dan nilai FOB ekspor 2012-2024 dengan filter dinamis negara tujuan.
-4. **Regional Mining Operations:** Analisis komparasi produksi batubara PKP2B vs IUP serta metrik reklamasi lingkungan Kaltim.
-5. **Interactive Geospatial Map (Leaflet.js):** Peta sebaran blok lelang WIUP di seluruh nusantara dengan visualisasi marker titik koordinat, klasifikasi warna status lelang, dan popup informasi KDI.
-6. **Master Directory IUP:** Tabel interaktif data 4,152 IUP dengan pencarian, filter komoditas/provinsi, serta pagination dinamis.
-7. **EAI Lineage & Audit Viewer:** Tabel pembuktian integrasi data yang menampilkan riwayat dan status setiap proses ETL secara transparan.
+### 7.1 Arsitektur Antarmuka Web & Fitur Utama
+
+Aplikasi web dirancang dengan arsitektur **Multi-Page Routing** yang memisahkan akses publik dan ruang kerja analitik terproteksi:
+
+1. **Portal Publik / Landing Page (`/`):**
+   * **Executive Teaser & Status Integrasi:** Menampilkan ringkasan metrik makro (produksi nasional 836.1 juta ton, ekspor 555.3 juta ton, 4,152 IUP, dan 40 blok lelang) serta status kesiapan basis data SQLite.
+   * **Kartu Interaktif 5 Dataset Sumber:** Dilengkapi animasi interaktif hover-lift dan tautan langsung (*direct outbound links*) ke portal data resmi penerbit (BPS, Dinas ESDM Kaltim CKAN, Ditjen Minerba Lelang, HEESI ESDM, dan MoDI ESDM) untuk transparansi lineage data.
+   * **Modal Login Terautentikasi:** Form otentikasi akun Administrator (`admin` / `admin123`) berbasis modal popup yang mengamankan rute internal.
+
+2. **Exploratory Visual Dashboard (EVD) Terproteksi (`/dashboard`):**
+   * **Route Guard & Manajemen Sesi:** Memvalidasi keberadaan token sesi aktif sebelum merender antarmuka dashboard. Akses tanpa login secara otomatis dialihkan kembali ke landing page.
+   * **Executive Overview (Ringkasan KPI):** Kartu ringkasan metrik instan, grafik neraca pasokan batubara (PDF), dan grafik cadangan batubara per provinsi (PDF).
+   * **Global Trade Analytics:** Visualisasi time-series interaktif volume dan nilai FOB ekspor 2012-2024 dengan filter dinamis negara tujuan (BPS CSV).
+   * **Regional Mining Operations:** Analisis komparasi produksi batubara PKP2B vs IUP serta metrik reklamasi lingkungan Kaltim (ESDM XLSX).
+   * **Interactive Geospatial Map (Leaflet.js):** Peta sebaran blok lelang WIUP di seluruh nusantara dengan visualisasi marker titik koordinat, klasifikasi warna status lelang, dan popup informasi KDI (Minerba JSON).
+   * **Master Directory IUP:** Tabel interaktif data 4,152 IUP dengan pencarian real-time, filter komoditas/provinsi, serta pagination dinamis (MoDI CSV).
+   * **EAI Lineage & Audit Viewer:** Tabel pembuktian integrasi data yang menampilkan riwayat dan status setiap proses ETL secara transparan dari tabel `etl_audit_log`.
 
 ### 7.2 Panduan Menjalankan Aplikasi
 Aplikasi dikembangkan menggunakan Python 3.12 dengan Astral `uv`.

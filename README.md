@@ -11,26 +11,26 @@ Dashboard analitik terintegrasi berbasis web untuk tugas besar mata kuliah **Int
 
 ## 1. Fitur Utama Aplikasi
 
-1. **Sistem Login & Proteksi Sesi**: Otentikasi pengguna berbasis token sesi untuk akses dashboard administrator.
-2. **Ringkasan Eksekutif & Neraca Energi**: Visualisasi pasokan batubara nasional dan cadangan per provinsi diekstraksi dari publikasi resmi PDF Kementerian ESDM.
-3. **Analitik Ekspor Global (BPS CSV)**: Visualisasi tren ekspor batubara 2012-2024 (Volume & FOB Value) dengan filter dinamis negara tujuan.
+1. **Arsitektur Multi-Page & Proteksi Sesi**:
+   - **Landing Page Publik (`/`)**: Menampilkan teaser ringkasan eksekutif, status integrasi sistem, 5 kartu dataset interaktif dengan animasi hover lift dan direct outbound link ke portal resmi, serta modal login terautentikasi.
+   - **Dashboard Analitik Terproteksi (`/dashboard`)**: Ruang kerja *Exploratory Visual Dashboard* (EVD) multi-tab yang diproteksi route guard berbasis token sesi (`admin` / `admin123`).
+2. **Ringkasan Eksekutif & Neraca Energi (PDF HEESI 2024)**: Visualisasi tren pasokan batubara nasional 2014-2024 (produksi, ekspor, konsumsi DMO) dan estimasi cadangan terbukti per provinsi yang diekstraksi dari publikasi resmi PDF Kementerian ESDM.
+3. **Analitik Ekspor Global (BPS CSV)**: Visualisasi tren ekspor batubara 2012-2024 (Volume & FOB Value) dengan filter dinamis 11 negara tujuan utama.
 4. **Indikator Operasional Kaltim (ESDM XLSX)**: Analisis komparasi produksi batubara PKP2B vs IUP, lifting migas, serta komitmen reklamasi lingkungan vs penertiban penambangan liar.
-5. **Peta Sebaran Lelang WIUP (ESDM JSON)**: Peta geospasial interaktif (Leaflet.js) untuk 40 blok lelang tambang di Indonesia dengan detail koordinat dan nilai Kompensasi Data Informasi (KDI).
-6. **Direktori 4,152 Izin Usaha Pertambangan (MoDI CSV)**: Tabel data multi-komoditas nasional dengan pencarian, filter provinsi/komoditas, dan pagination dinamis.
-7. **Audit Trail Data-Level EAI**: Log eksekusi pipeline ETL real-time dari basis data SQLite untuk pembuktian lineage data.
-
+5. **Peta Sebaran Lelang WIUP (ESDM JSON)**: Peta geospasial interaktif (Leaflet.js) untuk 40 blok lelang tambang di Indonesia dengan detail koordinat, filter status, dan nilai Kompensasi Data Informasi (KDI).
+6. **Master Direktori 4,152 Izin Usaha Pertambangan (MoDI CSV)**: Tabel data multi-komoditas nasional dengan pencarian real-time, filter provinsi/komoditas, dan pagination dinamis.
+7. **Audit Trail Data-Level EAI**: Log eksekusi pipeline ETL real-time dari basis data SQLite untuk pembuktian lineage data, status transaksi, dan jumlah baris terintegrasi.
 ---
 
 ## 2. Matriks 5 Dataset Heterogen (4 Format)
 
-| No | Dataset | Format | Sumber Resmi | Tabel Target Database | Jumlah Baris |
+| No | Dataset | Format | Sumber Resmi & Metode Ekstraksi | Tabel Target Database | Jumlah Baris |
 |:--:|---|:---:|---|---|:---:|
-| 1 | Ekspor Batubara per Negara 2012-2024 | **CSV** | BPS (Perdagangan Luar Negeri) | `fact_ekspor_batubara` | 143 |
-| 2 | Operasional Pertambangan Prov. Kaltim | **XLSX** | Dinas ESDM Prov. Kaltim | `fact_operasional_kaltim` | 42 |
-| 3 | Lelang Wilayah Izin Usaha Pertambangan | **JSON** | Ditjen Minerba ESDM | `fact_lelang_wiup` | 40 |
-| 4 | Neraca Pasokan & Cadangan Batubara | **PDF** | Kementerian ESDM (HEESI 2024) | `fact_pasokan_batubara_nasional` & `fact_cadangan_batubara_provinsi` | 34 |
-| 5 | Direktori Izin Usaha Pertambangan | **CSV** | MoDI ESDM | `fact_izin_tambang` | 4,152 |
-
+| 1 | Ekspor Batubara per Negara 2012-2024 | **CSV** | BPS (Statistik Perdagangan Luar Negeri - Ekspor Bulanan/Tahunan) | `fact_ekspor_batubara` | 143 |
+| 2 | Operasional Pertambangan Prov. Kaltim | **XLSX** | Dinas ESDM Prov. Kaltim (Portal Open Data CKAN Kaltim) | `fact_operasional_kaltim` | 42 |
+| 3 | Lelang Wilayah Izin Usaha Pertambangan | **JSON** | Ditjen Minerba ESDM (Web Scraping API Portal Lelang WIUP) | `fact_lelang_wiup` | 40 |
+| 4 | Neraca Pasokan & Cadangan Batubara | **PDF** | Kementerian ESDM (Buku Statistik HEESI 2024 - Hal. 76 & 77) | `fact_pasokan_batubara_nasional` & `fact_cadangan_batubara_provinsi` | 34 |
+| 5 | Direktori Izin Usaha Pertambangan | **CSV** | MoDI ESDM (Web Scraping Direktori Perizinan Tambang Nasional) | `fact_izin_tambang` | 4,152 |
 ---
 
 ## 3. Cara Menjalankan Aplikasi (Menggunakan Astral `uv`)
@@ -62,7 +62,6 @@ Buka peramban di: **`http://127.0.0.1:8000`**
 
 ```
 iak-dashboard/
-├── AGENTS.md                  # Panduan workflow & aturan agent
 ├── README.md                  # Dokumentasi ringkas proyek
 ├── pyproject.toml             # Konfigurasi proyek Python Astral uv
 ├── data/
