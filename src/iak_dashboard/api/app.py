@@ -39,13 +39,24 @@ app.include_router(mining_router)
 # Mount Static/Frontend files
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 os.makedirs(STATIC_DIR, exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 @app.get("/", response_class=HTMLResponse, tags=["Web Interface"])
-def index():
-    html_file = STATIC_DIR / "index.html"
+def landing():
+    html_file = STATIC_DIR / "landing.html"
     if html_file.exists():
         return FileResponse(
             html_file,
             headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
         )
-    return HTMLResponse("<h1>IAK Mining Dashboard API is running.</h1><p>Frontend is loading...</p>")
+    return HTMLResponse("<h1>Portal EAI Pertambangan</h1><p>Landing page is loading...</p>")
+
+@app.get("/dashboard", response_class=HTMLResponse, tags=["Web Interface"])
+def dashboard():
+    html_file = STATIC_DIR / "dashboard.html"
+    if html_file.exists():
+        return FileResponse(
+            html_file,
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
+        )
+    return HTMLResponse("<h1>Dashboard EVD Minerba</h1><p>Dashboard is loading...</p>")

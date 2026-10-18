@@ -83,6 +83,17 @@ iak-dashboard/
         │   ├── extractors.py
         │   ├── pipeline.py
         │   └── schema.py
-        └── static/            # Frontend Web Dashboard (Tailwind + Chart.js + Leaflet)
-            └── index.html
+        └── static/            # Frontend Web Dashboard Modular
+            ├── landing.html   # Halaman depan publik & form login
+            ├── dashboard.html # Dashboard analitik terproteksi (EVD)
+            ├── css/
+            │   └── dashboard.css
+            └── js/
+                ├── auth.js    # Sesi & route guard
+                ├── landing.js # Teaser KPI publik & handler login
+                ├── charts.js  # Visualisasi Chart.js (PDF, CSV, XLSX)
+                ├── map.js     # Peta spasial Leaflet.js (JSON)
+                ├── licenses.js# Master direktori 4,152 IUP (CSV)
+                ├── audit.js   # Audit trail pipeline ETL
+                └── dashboard.js # Bootstrapper dashboard & tab nav
 ```

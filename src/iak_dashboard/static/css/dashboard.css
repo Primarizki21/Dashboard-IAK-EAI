@@ -1,0 +1,13 @@
+/* Gaya Kustom Dashboard Minerba EAI */
+.tab-active {
+  border-bottom: 2px solid #d97706;
+  color: #b45309;
+  font-weight: 600;
+}
+
+#map {
+  height: 480px;
+  width: 100%;
+  border-radius: 0.5rem;
+  z-index: 10;
+}
