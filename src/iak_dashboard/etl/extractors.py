@@ -101,23 +101,26 @@ def extract_wiup_auctions(json_path: Path) -> pd.DataFrame:
 
 def extract_heesi_pdf(pdf_path: Path) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Ekstraksi statistik batubara nasional dari publikasi HEESI ESDM (Format: PDF).
-    Tabel 1: Neraca Pasokan Batubara Nasional (Produksi, Ekspor, Impor, Konsumsi).
-    Tabel 2: Cadangan dan Sumber Daya Batubara per Provinsi.
+    Ekstraksi statistik batubara nasional dari publikasi HEESI ESDM 2024 (Format: PDF).
+    Tabel 1: Neraca Pasokan Batubara Nasional 2014-2024 (Hal. 77, Tabel 6.1.2).
+    Tabel 2: Cadangan dan Sumber Daya Batubara per Provinsi Des 2024 (Hal. 76, Tabel 6.1.1).
     """
     supply_records: List[Dict[str, Any]] = []
     reserves_records: List[Dict[str, Any]] = []
 
     with pdfplumber.open(pdf_path) as pdf:
-        # 1. Pasokan Batubara Nasional dari Halaman 55 (Tabel 6.1.2)
-        p55 = pdf.pages[54]
-        for table in p55.extract_tables():
+        # 1. Pasokan Batubara Nasional dari Halaman 77 (Tabel 6.1.2) - Rentang 2014-2024
+        p77 = pdf.pages[76]
+        for table in p77.extract_tables():
             for row in table:
-                if row and len(row) >= 4 and row[0] and row[0].isdigit():
-                    year = int(row[0])
-                    prod = float(str(row[1]).replace(",", "")) if row[1] else 0.0
-                    exp = float(str(row[2]).replace(",", "")) if row[2] else 0.0
-                    imp = float(str(row[3]).replace(",", "")) if row[3] else 0.0
+                if not row or not row[0]:
+                    continue
+                yr_str = str(row[0]).split()[0]
+                if yr_str.isdigit():
+                    year = int(yr_str)
+                    prod = float(str(row[1]).replace(",", "").strip()) if row[1] else 0.0
+                    exp = float(str(row[2]).replace(",", "").strip()) if row[2] else 0.0
+                    imp = float(str(row[3]).replace(",", "").strip()) if row[3] else 0.0
                     dom = prod - exp + imp
                     supply_records.append({
                         "tahun": year,
@@ -128,18 +131,18 @@ def extract_heesi_pdf(pdf_path: Path) -> Tuple[pd.DataFrame, pd.DataFrame]:
                         "source_format": "PDF"
                     })
 
-        # 2. Cadangan Batubara per Provinsi dari Halaman 54 (Tabel 6.1.1)
-        p54 = pdf.pages[53]
-        for table in p54.extract_tables():
+        # 2. Cadangan Batubara per Provinsi dari Halaman 76 (Tabel 6.1.1) - Status Des 2024
+        p76 = pdf.pages[75]
+        for table in p76.extract_tables():
             for row in table:
-                if not row or len(row) < 9:
+                if not row or len(row) < 10 or not row[1]:
                     continue
-                prov = str(row[0]).replace("\n", " ").strip()
-                if prov in ["Province", "TOTAL", "", "None"] or prov.startswith("Explo"):
+                prov = str(row[1]).replace("\n", " ").strip()
+                if prov in ["Province", "TOTAL", "None"] or not prov:
                     continue
                 try:
-                    res_total = float(str(row[6]).replace(",", "").strip())
-                    reserves = float(str(row[8]).replace(",", "").strip())
+                    res_total = float(str(row[7]).replace(",", "").strip())
+                    reserves = float(str(row[9]).replace(",", "").strip())
                     reserves_records.append({
                         "provinsi": prov,
                         "sumberdaya_juta_ton": res_total,
@@ -150,7 +153,6 @@ def extract_heesi_pdf(pdf_path: Path) -> Tuple[pd.DataFrame, pd.DataFrame]:
                     continue
 
     return pd.DataFrame(supply_records), pd.DataFrame(reserves_records)
-
 def extract_modi_licenses(csv_path: Path) -> pd.DataFrame:
     """
     Ekstraksi data perizinan pertambangan nasional MoDI ESDM (Format: CSV).

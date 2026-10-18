@@ -88,9 +88,9 @@ Proyek ini menggunakan **5 dataset resmi** dengan **4 format data yang berbeda**
 |:--:|---|:---:|---|---|:---:|
 | 1 | **Ekspor Batubara menurut Negara Tujuan Utama (2012-2024)** | `CSV` | Badan Pusat Statistik (BPS) | Negara mitra dagang (11 negara utama), volume ekspor (ribu ton), nilai FOB (juta USD), periode 13 tahun tahunan. | 143 baris |
 | 2 | **Indikator Operasional Pertambangan Kaltim (2022-2026)** | `XLSX` | Dinas ESDM Prov. Kalimantan Timur | Produksi batubara PKP2B vs IUP, lifting minyak (Barel), lifting gas (MMBTU), luas reklamasi (Ha), penertiban tambang liar. | 42 baris |
-| 3 | **Lelang Wilayah Izin Usaha Pertambangan (WIUP)** | `JSON` | Ditjen Minerba Kementerian ESDM | Daftar 40 blok lelang tambang, nilai Kompensasi Data Informasi (KDI Rp), luas wilayah (Ha), koordinat lintang & bujur (lat, long), status tahapan lelang. | 40 baris |
-| 4 | **Neraca Pasokan & Cadangan Batubara Nasional** | `PDF` | Kementerian ESDM (Buku Statistik HEESI) | Neraca energi batubara (Tabel 6.1.2: Produksi, Ekspor, Impor, Konsumsi Domestik 2011-2021) dan cadangan batubara per provinsi (Tabel 6.1.1). | 34 baris |
-| 5 | **Direktori Izin Usaha Pertambangan Multi-Komoditas** | `CSV` | MoDI (Minerba One Data Indonesia) ESDM | 4,152 IUP aktif, nama perusahaan, badan usaha (PT/CV), komoditas (Nikel, Batubara, Emas, Tembaga, Bauksit), luas konsesi SK (Ha), status Clean and Clear (CNC). | 4,152 baris |
+| 3 | **Lelang Wilayah Izin Usaha Pertambangan (WIUP)** | `JSON` | Ditjen Minerba Kementerian ESDM | Daftar 40 blok lelang tambang dengan atribut spasial & finansial, diperoleh melalui scraping data API portal `minerba.esdm.go.id/lelang/`. | 40 baris |
+| 4 | **Neraca Pasokan & Cadangan Batubara Nasional** | `PDF` | Kementerian ESDM (Buku Statistik HEESI 2024) | Neraca energi batubara (Tabel 6.1.2: Produksi, Ekspor, Impor, Konsumsi Domestik 2014-2024 Hal. 77) dan cadangan batubara per provinsi (Tabel 6.1.1 Hal. 76). | 34 baris |
+| 5 | **Direktori Izin Usaha Pertambangan Multi-Komoditas** | `CSV` | MoDI (Minerba One Data Indonesia) ESDM | 4,152 IUP aktif nasional, diperoleh melalui scraping data direktori web MoDI ESDM karena portal resmi tidak menyediakan unduh massal. | 4,152 baris |
 
 ---
 
@@ -123,9 +123,9 @@ Pipeline ETL diimplementasikan dalam Python menggunakan toolchain Astral `uv`:
 ### 5.1 Tahap Ekstraksi (Extract)
 * **Ekstraktor CSV BPS (`extract_coal_exports`):** Menangani struktur berkas laporan BPS yang memiliki dua tabel independen dalam satu sheet (Tabel Volume baris 4-14 dan Tabel Nilai FOB baris 18-28).
 * **Ekstraktor XLSX Kaltim (`extract_kaltim_operations`):** Menggunakan `openpyxl` untuk mengekstrak data operasional serta mengabaikan sel berformula mentah (seperti `=SUM(G4:G5)`).
-* **Ekstraktor JSON Minerba (`extract_wiup_auctions`):** Melakukan parsing terhadap hierarki objek lelang, menangkap koordinat geospasial `lat` dan `long` untuk kebutuhan visualisasi pemetaan.
-* **Ekstraktor PDF HEESI (`extract_heesi_pdf`):** Menggunakan pustaka `pdfplumber` untuk mendeteksi batas koordinat tabel di halaman 54 dan 55, mengekstraksi teks multi-kolom, serta mengeliminasi baris header berulang.
-* **Ekstraktor CSV MoDI (`extract_modi_licenses`):** Melakukan streaming dan parsing terhadap 4,152 baris perizinan tambang.
+* **Ekstraktor JSON Minerba (`extract_wiup_auctions`):** Melakukan parsing terhadap hierarki objek lelang hasil scraping API portal `minerba.esdm.go.id/lelang/`, menangkap koordinat geospasial `lat` dan `long` untuk kebutuhan visualisasi pemetaan.
+* **Ekstraktor PDF HEESI (`extract_heesi_pdf`):** Menggunakan pustaka `pdfplumber` untuk mendeteksi batas koordinat tabel di halaman 76 (Tabel 6.1.1 Cadangan Batubara) dan halaman 77 (Tabel 6.1.2 Pasokan Batubara 2014-2024) dari buku resmi HEESI 2024.
+* **Ekstraktor CSV MoDI (`extract_modi_licenses`):** Melakukan streaming dan parsing terhadap 4,152 baris perizinan tambang hasil scraping direktori web MoDI ESDM.
 
 ### 5.2 Tahap Transformasi & Pembersihan (Transform & Cleansing)
 1. **Penanganan Nilai Hilang dan Karakter Khusus:** Data BPS sering kali menggunakan karakter strip panjang (`─`) atau tanda minus (`-`) untuk merepresentasikan ketiadaan data/ekspor nol. Modul ETL mengubah karakter tersebut menjadi angka numerik `0.0` melalui fungsi `clean_num`.
@@ -147,8 +147,8 @@ Melalui dashboard EVD (*Exploratory Visual Dashboard*), diperoleh temuan-temuan 
 * **Fluktuasi Nilai Devisa (Windfall Profit 2022):** Meskipun volume ekspor pada tahun 2022 (110.1 juta ton ke India) relatif mirip dengan tahun 2023-2024, nilai devisa ekspor (FOB Value) melonjak signifikan hingga puncaknya pada tahun 2022 akibat krisis energi global dan disrupsi rantai pasok geopolitik.
 
 ### Insight 2: Rasio Pasokan Nasional vs Ekspor Batubara
-* Berdasarkan ekstraksi tabel HEESI PDF, produksi batubara nasional melonjak dari **353.2 juta ton (2011)** menjadi **613.9 juta ton (2021)**, atau meningkat sebesar **73.8%** dalam satu dekade.
-* Porsi ekspor mendominasi alokasi batubara nasional (rata-rata 70-75% dari total produksi), sementara konsumsi domestik (*Domestic Market Obligation* / DMO) untuk pembangkit listrik PLN dan industri semen/smelter berada di kisaran 25-30% (mencapai **193.2 juta ton pada 2021**).
+* Berdasarkan ekstraksi tabel HEESI 2024 PDF, produksi batubara nasional melonjak dari **458.1 juta ton (2014)** menjadi rekor puncak **836.1 juta ton (2024)**, atau meningkat sebesar **82.5%** dalam satu dekade terakhir.
+* Porsi ekspor terus mendominasi alokasi batubara nasional (rata-rata 65-75% dari total produksi, mencapai rekor **555.3 juta ton pada 2024**), sementara konsumsi domestik (*Domestic Market Obligation* / DMO) untuk pembangkit listrik PLN dan smelter domestik mencapai **301.7 juta ton pada 2024**.
 
 ### Insight 3: Peran Vital Kalimantan Timur dan Komitmen Lingkungan
 * Data ESDM Kaltim menunjukkan Kaltim memproduksi lebih dari **287 juta ton batubara pada 2025**, dengan porsi konsesi PKP2B (161 juta ton) dan IUP Daerah (126 juta ton).

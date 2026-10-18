@@ -28,7 +28,7 @@ Dashboard analitik terintegrasi berbasis web untuk tugas besar mata kuliah **Int
 | 1 | Ekspor Batubara per Negara 2012-2024 | **CSV** | BPS (Perdagangan Luar Negeri) | `fact_ekspor_batubara` | 143 |
 | 2 | Operasional Pertambangan Prov. Kaltim | **XLSX** | Dinas ESDM Prov. Kaltim | `fact_operasional_kaltim` | 42 |
 | 3 | Lelang Wilayah Izin Usaha Pertambangan | **JSON** | Ditjen Minerba ESDM | `fact_lelang_wiup` | 40 |
-| 4 | Neraca Pasokan & Cadangan Batubara | **PDF** | Kementerian ESDM (HEESI) | `fact_pasokan_batubara_nasional` & `fact_cadangan_batubara_provinsi` | 34 |
+| 4 | Neraca Pasokan & Cadangan Batubara | **PDF** | Kementerian ESDM (HEESI 2024) | `fact_pasokan_batubara_nasional` & `fact_cadangan_batubara_provinsi` | 34 |
 | 5 | Direktori Izin Usaha Pertambangan | **CSV** | MoDI ESDM | `fact_izin_tambang` | 4,152 |
 
 ---

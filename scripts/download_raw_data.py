@@ -23,8 +23,8 @@ DATASETS = [
     },
     {
         "filename": "data/raw/esdm_heesi_statistics.pdf",
-        "url": "https://www.esdm.go.id/assets/media/content/content-handbook-of-energy-and-economic-statistics-of-indonesia-2021.pdf",
-        "description": "Kementerian ESDM: Handbook of Energy & Economic Statistics (PDF)",
+        "url": "https://www.esdm.go.id/assets/media/content/content-handbook-of-energy-and-economic-statistics-of-indonesia-2024.pdf",
+        "description": "Kementerian ESDM: Handbook of Energy & Economic Statistics 2024 (PDF)",
     },
     {
         "filename": "data/raw/modi_mining_licenses.csv",
