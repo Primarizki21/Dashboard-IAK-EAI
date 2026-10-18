@@ -33,18 +33,28 @@ Dashboard analitik terintegrasi berbasis web untuk tugas besar mata kuliah **Int
 | 5 | Direktori Izin Usaha Pertambangan | **CSV** | MoDI ESDM (Web Scraping Direktori Perizinan Tambang Nasional) | `fact_izin_tambang` | 4,152 |
 ---
 
-## 3. Cara Menjalankan Aplikasi (Menggunakan Astral `uv`)
+## 3. Tech Stack & Prasyarat
 
-Pastikan Astral `uv` telah terpasang di sistem.
+* **Environment & Package Manager:** Python 3.12+, Astral `uv`
+* **Backend API & Auth:** FastAPI, Uvicorn, Python `hashlib` (SHA-256 Auth Guard)
+* **Data-Level EAI Engine:** Pandas, OpenPyXL (Excel), PDFPlumber (PDF Table Extractor), SQLite3
+* **Frontend & Visualisasi:** Tailwind CSS, Chart.js, Leaflet.js (Geospatial Mapping), Modular ES6 JS
+
+---
+
+## 4. Cara Menjalankan Aplikasi (Menggunakan Astral `uv`)
+
+Pastikan Astral `uv` telah terpasang di sistem (`curl -LsSf https://astral.sh/uv/install.sh | sh`).
 
 ```bash
 # 1. Masuk ke direktori proyek
-cd /home/primarizki/project/iak-dashboard
+git clone <URL_REPOSITORY_ANDA>
+cd iak-dashboard
 
 # 2. Sinkronisasi dependensi virtualenv
 uv sync
 
-# 3. (Opsional) Jalankan kembali pipeline ETL jika ingin reload data
+# 3. Jalankan pipeline ETL (Wajib saat kloning pertama untuk memuat data ke SQLite)
 uv run python3 src/iak_dashboard/etl/pipeline.py
 
 # 4. Jalankan aplikasi web dashboard
@@ -58,7 +68,7 @@ Buka peramban di: **`http://127.0.0.1:8000`**
 
 ---
 
-## 4. Struktur Proyek
+## 5. Struktur Proyek
 
 ```
 iak-dashboard/

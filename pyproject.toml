@@ -1,7 +1,7 @@
 [project]
 name = "iak-dashboard"
 version = "0.1.0"
-description = "Add your description here"
+description = "Data-Level EAI Mining Analytics Dashboard & Heterogeneous ETL Pipeline"
 readme = "README.md"
 authors = [
     { name = "kappa", email = "primarizkiahmad.h@gmail.com" }
