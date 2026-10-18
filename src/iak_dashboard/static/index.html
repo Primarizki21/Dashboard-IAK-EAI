@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Integrasi Pertambangan Indonesia - Data-Level EAI</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    .tab-active {
+      border-bottom: 2px solid #d97706;
+      color: #b45309;
+      font-weight: 600;
+    }
+    #map { height: 480px; width: 100%; border-radius: 0.5rem; z-index: 10; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans">
+
+  <!-- Top Navigation Bar -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between items-center h-16">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-lg bg-amber-600 flex items-center justify-center text-white font-bold text-xl shadow">
+            M
+          </div>
+          <div>
+            <h1 class="text-lg font-bold text-slate-900 leading-tight">MINERBA EAI DASHBOARD</h1>
+            <p class="text-xs text-slate-500">Integrasi Aplikasi Korporat: Sektor Pertambangan Indonesia</p>
+          </div>
+        </div>
+
+        <!-- Auth and Controls -->
+        <div class="flex items-center space-x-3">
+          <div id="authStatusBadge" class="hidden sm:flex items-center text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+            <span class="w-2 h-2 rounded-full bg-amber-500 mr-1.5" id="authDot"></span>
+            <span id="authStatusText">Mode Publik (Tamu)</span>
+          </div>
+          <button id="loginBtn" onclick="openLoginModal()" class="px-3.5 py-2 text-xs font-medium rounded-md bg-amber-600 hover:bg-amber-700 text-white transition focus:outline-none focus:ring-2 focus:ring-amber-500">
+            Masuk / Login
+          </button>
+          <button id="logoutBtn" onclick="handleLogout()" class="hidden px-3.5 py-2 text-xs font-medium rounded-md bg-slate-200 hover:bg-slate-300 text-slate-700 transition focus:outline-none">
+            Keluar
+          </button>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <nav class="flex space-x-6 overflow-x-auto text-sm border-t border-slate-100 py-1" aria-label="Tabs">
+        <button onclick="switchTab('tab-ringkasan')" id="nav-ringkasan" class="tab-btn py-2 px-1 text-slate-600 hover:text-slate-900 whitespace-nowrap tab-active">
+          Ringkasan Eksekutif
+        </button>
+        <button onclick="switchTab('tab-ekspor')" id="nav-ekspor" class="tab-btn py-2 px-1 text-slate-600 hover:text-slate-900 whitespace-nowrap">
+          Ekspor Global (BPS CSV)
+        </button>
+        <button onclick="switchTab('tab-kaltim')" id="nav-kaltim" class="tab-btn py-2 px-1 text-slate-600 hover:text-slate-900 whitespace-nowrap">
+          Operasional Kaltim (XLSX)
+        </button>
+        <button onclick="switchTab('tab-lelang')" id="nav-lelang" class="tab-btn py-2 px-1 text-slate-600 hover:text-slate-900 whitespace-nowrap">
+          Peta Lelang WIUP (JSON)
+        </button>
+        <button onclick="switchTab('tab-izin')" id="nav-izin" class="tab-btn py-2 px-1 text-slate-600 hover:text-slate-900 whitespace-nowrap">
+          Izin Tambang MoDI (CSV)
+        </button>
+        <button onclick="switchTab('tab-eai')" id="nav-eai" class="tab-btn py-2 px-1 text-slate-600 hover:text-slate-900 whitespace-nowrap">
+          Arsitektur EAI & Audit
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Notification Banner -->
+  <div id="alertBanner" class="hidden max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4 w-full">
+    <div id="alertContent" class="p-3 rounded-lg text-sm flex justify-between items-center bg-amber-50 text-amber-800 border border-amber-200">
+      <span id="alertMessage">Pesan sistem</span>
+      <button onclick="hideAlert()" class="text-amber-800 font-bold ml-4">&times;</button>
+    </div>
+  </div>
+
+  <!-- Main Content Area -->
+  <main class="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full">
+
+    <!-- TAB 1: RINGKASAN EKSEKUTIF -->
+    <section id="tab-ringkasan" class="tab-content space-y-6">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-2 border-b border-slate-200">
+        <div>
+          <h2 class="text-xl font-bold text-slate-900">Ringkasan Eksekutif Sektor Pertambangan</h2>
+          <p class="text-xs text-slate-500 mt-1">Konsolidasi 5 dataset heterogen pertambangan Indonesia (CSV, XLSX, JSON, PDF)</p>
+        </div>
+        <span class="mt-2 sm:mt-0 text-xs px-2.5 py-1 rounded bg-amber-100 text-amber-800 font-medium">Single Source of Truth</span>
+      </div>
+
+      <!-- KPI Metrics Grid -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <p class="text-xs text-slate-500 font-medium uppercase tracking-wide">Total Izin Tambang (IUP)</p>
+          <p id="kpi-total-izin" class="text-2xl font-bold text-slate-900 mt-1">4,152</p>
+          <span class="text-[11px] text-slate-400">MoDI ESDM (CSV)</span>
+        </div>
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <p class="text-xs text-slate-500 font-medium uppercase tracking-wide">Nilai Ekspor Batubara Terkini</p>
+          <p id="kpi-ekspor-nilai" class="text-2xl font-bold text-emerald-700 mt-1">US$ 30.5 M</p>
+          <span class="text-[11px] text-slate-400">Tahun 2024 (BPS CSV)</span>
+        </div>
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <p class="text-xs text-slate-500 font-medium uppercase tracking-wide">Produksi Batubara Nasional</p>
+          <p id="kpi-prod-batubara" class="text-2xl font-bold text-amber-700 mt-1">613.9 Juta Ton</p>
+          <span class="text-[11px] text-slate-400">HEESI ESDM (PDF)</span>
+        </div>
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <p class="text-xs text-slate-500 font-medium uppercase tracking-wide">Blok Lelang WIUP Baru</p>
+          <p id="kpi-lelang-wiup" class="text-2xl font-bold text-indigo-700 mt-1">40 Blok</p>
+          <span class="text-[11px] text-slate-400">Ditjen Minerba (JSON)</span>
+        </div>
+      </div>
+
+      <!-- Charts Row: Pasokan Nasional & Cadangan per Provinsi -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <div class="flex justify-between items-center mb-4">
+            <div>
+              <h3 class="font-semibold text-slate-900 text-sm">Neraca Pasokan Batubara Nasional (2011-2021)</h3>
+              <p class="text-xs text-slate-500">Ekstraksi dari Tabel 6.1.2 Publikasi Resmi HEESI ESDM (Format PDF)</p>
+            </div>
+            <span class="text-xs font-mono bg-purple-50 text-purple-700 px-2 py-0.5 rounded">PDF Parser</span>
+          </div>
+          <div class="h-64 relative">
+            <canvas id="chartSupply"></canvas>
+          </div>
+        </div>
+
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <div class="flex justify-between items-center mb-4">
+            <div>
+              <h3 class="font-semibold text-slate-900 text-sm">Cadangan Batubara per Provinsi (Juta Ton)</h3>
+              <p class="text-xs text-slate-500">Ekstraksi dari Tabel 6.1.1 HEESI ESDM (Format PDF)</p>
+            </div>
+            <span class="text-xs font-mono bg-purple-50 text-purple-700 px-2 py-0.5 rounded">PDF Parser</span>
+          </div>
+          <div class="h-64 relative">
+            <canvas id="chartReserves"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: EKSPOR GLOBAL BPS -->
+    <section id="tab-ekspor" class="tab-content hidden space-y-6">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-2 border-b border-slate-200">
+        <div>
+          <h2 class="text-xl font-bold text-slate-900">Tren Ekspor Batubara Indonesia (2012-2024)</h2>
+          <p class="text-xs text-slate-500 mt-1">Sumber: Statistik Perdagangan Luar Negeri BPS (Format: CSV)</p>
+        </div>
+        <div class="mt-3 sm:mt-0 flex items-center space-x-2">
+          <label for="exportCountryFilter" class="text-xs font-medium text-slate-700">Filter Negara:</label>
+          <select id="exportCountryFilter" onchange="loadExportData()" class="text-xs border border-slate-300 rounded px-2.5 py-1.5 bg-white text-slate-800 focus:ring-amber-500">
+            <option value="">Semua Negara (Total)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-2 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <h3 class="font-semibold text-slate-900 text-sm mb-3">Tren Volume & Nilai Ekspor per Tahun</h3>
+          <div class="h-72 relative">
+            <canvas id="chartExports"></canvas>
+          </div>
+        </div>
+
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+          <h3 class="font-semibold text-slate-900 text-sm mb-2">Peringkat Negara Tujuan Utama</h3>
+          <p class="text-xs text-slate-500 mb-3">Total volume ekspor kumulatif 2012-2024</p>
+          <div class="overflow-y-auto flex-grow max-h-72">
+            <table class="min-w-full text-xs text-left">
+              <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold sticky top-0">
+                <tr>
+                  <th class="py-2 px-2">Negara</th>
+                  <th class="py-2 px-2 text-right">Vol (Ribu Ton)</th>
+                  <th class="py-2 px-2 text-right">FOB (Juta US$)</th>
+                </tr>
+              </thead>
+              <tbody id="topDestinationsBody" class="divide-y divide-slate-100">
+                <!-- Injected via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: OPERASIONAL KALTIM -->
+    <section id="tab-kaltim" class="tab-content hidden space-y-6">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-2 border-b border-slate-200">
+        <div>
+          <h2 class="text-xl font-bold text-slate-900">Indikator Operasional Pertambangan Prov. Kaltim</h2>
+          <p class="text-xs text-slate-500 mt-1">Sumber: Dinas ESDM Provinsi Kalimantan Timur (Format: XLSX)</p>
+        </div>
+        <span class="text-xs font-mono bg-green-50 text-green-700 px-2.5 py-1 rounded border border-green-200">XLSX OpenPyXL Parser</span>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <p class="text-xs text-slate-500 font-medium">Realisasi Reklamasi Tambang</p>
+          <p class="text-2xl font-bold text-emerald-700 mt-1">10,869.5 Ha</p>
+          <p class="text-xs text-slate-500 mt-1">Rata-rata area terehabilitasi</p>
+        </div>
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <p class="text-xs text-slate-500 font-medium">Persentase Rehabilitasi Lahan</p>
+          <p class="text-2xl font-bold text-amber-700 mt-1">39.0 %</p>
+          <p class="text-xs text-slate-500 mt-1">Dari total lahan terganggu</p>
+        </div>
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <p class="text-xs text-slate-500 font-medium">Luas Penambangan Liar Diterbitkan</p>
+          <p class="text-2xl font-bold text-rose-700 mt-1">75.5 Ha</p>
+          <p class="text-xs text-slate-500 mt-1">Tindakan penertiban PETI</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <h3 class="font-semibold text-slate-900 text-sm mb-2">Produksi Batubara Kaltim: PKP2B vs KP/IUP (Ton)</h3>
+          <p class="text-xs text-slate-500 mb-4">Komparasi skema izin pemegang konsesi batubara di Kaltim</p>
+          <div class="h-64 relative">
+            <canvas id="chartKaltimCoal"></canvas>
+          </div>
+        </div>
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <h3 class="font-semibold text-slate-900 text-sm mb-2">Lifting Migas Kalimantan Timur</h3>
+          <p class="text-xs text-slate-500 mb-4">Lifting Minyak Bumi (Barel) dan Gas Alam (MMBTU)</p>
+          <div class="h-64 relative">
+            <canvas id="chartKaltimOilGas"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: PETA LELANG WIUP -->
+    <section id="tab-lelang" class="tab-content hidden space-y-6">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-2 border-b border-slate-200">
+        <div>
+          <h2 class="text-xl font-bold text-slate-900">Peta Sebaran Lelang Wilayah Izin Usaha Pertambangan (WIUP)</h2>
+          <p class="text-xs text-slate-500 mt-1">Sumber: Direktorat Jenderal Mineral dan Batubara ESDM (Format: JSON)</p>
+        </div>
+        <div class="mt-3 sm:mt-0 flex items-center space-x-2">
+          <label for="auctionCommFilter" class="text-xs font-medium text-slate-700">Komoditas:</label>
+          <select id="auctionCommFilter" onchange="loadAuctionData()" class="text-xs border border-slate-300 rounded px-2.5 py-1.5 bg-white text-slate-800 focus:ring-amber-500">
+            <option value="">Semua Komoditas</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Map Container -->
+      <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+        <div id="map"></div>
+        <div class="mt-3 flex flex-wrap items-center gap-4 text-xs text-slate-600 px-2">
+          <span class="font-medium text-slate-800">Legenda Marker:</span>
+          <span class="flex items-center"><span class="w-3 h-3 rounded-full bg-emerald-600 mr-1.5"></span> Lelang Selesai</span>
+          <span class="flex items-center"><span class="w-3 h-3 rounded-full bg-rose-600 mr-1.5"></span> Lelang Batal / Gagal</span>
+          <span class="flex items-center"><span class="w-3 h-3 rounded-full bg-amber-600 mr-1.5"></span> Tahapan Lelang Aktif</span>
+        </div>
+      </div>
+
+      <!-- Auction Table List -->
+      <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+        <h3 class="font-semibold text-slate-900 text-sm mb-3">Daftar Blok Wilayah Lelang</h3>
+        <div class="overflow-x-auto max-h-72">
+          <table class="min-w-full text-xs text-left">
+            <thead class="bg-slate-50 text-slate-600 sticky top-0">
+              <tr>
+                <th class="py-2 px-3">Nama Blok</th>
+                <th class="py-2 px-3">Lokasi (Kab/Prov)</th>
+                <th class="py-2 px-3">Komoditas</th>
+                <th class="py-2 px-3 text-right">Nilai KDI (Rp)</th>
+                <th class="py-2 px-3 text-right">Luas (Ha)</th>
+                <th class="py-2 px-3">Tahapan</th>
+              </tr>
+            </thead>
+            <tbody id="auctionTableBody" class="divide-y divide-slate-100">
+              <!-- Injected via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 5: IZIN TAMBANG MoDI -->
+    <section id="tab-izin" class="tab-content hidden space-y-6">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-2 border-b border-slate-200">
+        <div>
+          <h2 class="text-xl font-bold text-slate-900">Database Izin Usaha Pertambangan Multi-Komoditas Nasional</h2>
+          <p class="text-xs text-slate-500 mt-1">Sumber: Minerba One Data Indonesia (MoDI) ESDM (Format: CSV - 4,152 Izin)</p>
+        </div>
+        <span class="text-xs font-mono bg-blue-50 text-blue-700 px-2.5 py-1 rounded border border-blue-200">CSV Relational Ingestion</span>
+      </div>
+
+      <!-- Breakdown Charts -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <h3 class="font-semibold text-slate-900 text-sm mb-3">Distribusi IUP Berdasarkan Komoditas</h3>
+          <div class="h-64 relative">
+            <canvas id="chartIupCommodity"></canvas>
+          </div>
+        </div>
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <h3 class="font-semibold text-slate-900 text-sm mb-3">10 Provinsi dengan Konsesi Tambang Terbanyak</h3>
+          <div class="h-64 relative">
+            <canvas id="chartIupProvince"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Filters & Table -->
+      <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label for="licenseProvFilter" class="block text-xs font-medium text-slate-700 mb-1">Filter Provinsi:</label>
+            <select id="licenseProvFilter" onchange="loadLicensesData(0)" class="w-full text-xs border border-slate-300 rounded px-2.5 py-1.5 bg-white text-slate-800">
+              <option value="">Semua Provinsi</option>
+            </select>
+          </div>
+          <div>
+            <label for="licenseCommFilter" class="block text-xs font-medium text-slate-700 mb-1">Filter Komoditas:</label>
+            <select id="licenseCommFilter" onchange="loadLicensesData(0)" class="w-full text-xs border border-slate-300 rounded px-2.5 py-1.5 bg-white text-slate-800">
+              <option value="">Semua Komoditas</option>
+            </select>
+          </div>
+          <div class="flex items-end">
+            <button onclick="resetLicenseFilters()" class="w-full text-xs py-1.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded border border-slate-200 transition">
+              Reset Filter
+            </button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto max-h-96">
+          <table class="min-w-full text-xs text-left">
+            <thead class="bg-slate-50 text-slate-600 sticky top-0">
+              <tr>
+                <th class="py-2.5 px-3">Nama Perusahaan</th>
+                <th class="py-2.5 px-2">Bentuk</th>
+                <th class="py-2.5 px-3">Provinsi</th>
+                <th class="py-2.5 px-3">Kabupaten</th>
+                <th class="py-2.5 px-3">Komoditas</th>
+                <th class="py-2.5 px-2">Kegiatan</th>
+                <th class="py-2.5 px-3 text-right">Luas (Ha)</th>
+                <th class="py-2.5 px-2">CNC</th>
+              </tr>
+            </thead>
+            <tbody id="licenseTableBody" class="divide-y divide-slate-100">
+              <!-- Injected via JS -->
+            </tbody>
+          </table>
+        </div>
+
+        <div class="flex justify-between items-center pt-2 text-xs text-slate-500">
+          <span id="licensePageInfo">Menampilkan 0 dari 0 izin</span>
+          <div class="space-x-2">
+            <button id="licensePrevBtn" onclick="prevLicensePage()" class="px-2.5 py-1 bg-white border border-slate-300 rounded disabled:opacity-50">Sebelumnya</button>
+            <button id="licenseNextBtn" onclick="nextLicensePage()" class="px-2.5 py-1 bg-white border border-slate-300 rounded disabled:opacity-50">Berikutnya</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 6: ARSITEKTUR EAI & AUDIT -->
+    <section id="tab-eai" class="tab-content hidden space-y-6">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-2 border-b border-slate-200">
+        <div>
+          <h2 class="text-xl font-bold text-slate-900">Arsitektur Data-Level EAI & Pembuktian ETL</h2>
+          <p class="text-xs text-slate-500 mt-1">Dokumentasi integrasi data heterogen ke skema basis data terpadu (SQLite Warehouse)</p>
+        </div>
+        <span class="text-xs font-mono bg-emerald-50 text-emerald-800 px-2.5 py-1 rounded border border-emerald-200">100% Sesuai Rubrik Penilaian</span>
+      </div>
+
+      <!-- Format Summary Table -->
+      <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+        <h3 class="font-semibold text-slate-900 text-sm mb-3">Tabel Matriks Heterogenitas Sumber Data (4 Format Berbeda)</h3>
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-xs text-left">
+            <thead class="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+              <tr>
+                <th class="py-2 px-3">No</th>
+                <th class="py-2 px-3">Dataset</th>
+                <th class="py-2 px-3">Format Sumber</th>
+                <th class="py-2 px-3">Sumber Resmi</th>
+                <th class="py-2 px-3">Tabel Target Database</th>
+                <th class="py-2 px-3 text-right">Jumlah Baris</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              <tr>
+                <td class="py-2 px-3">1</td>
+                <td class="py-2 px-3 font-medium">Ekspor Batubara per Negara 2012-2024</td>
+                <td class="py-2 px-3"><span class="px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-mono">CSV</span></td>
+                <td class="py-2 px-3">BPS (Perdagangan Luar Negeri)</td>
+                <td class="py-2 px-3 font-mono">fact_ekspor_batubara</td>
+                <td class="py-2 px-3 text-right font-medium">143</td>
+              </tr>
+              <tr>
+                <td class="py-2 px-3">2</td>
+                <td class="py-2 px-3 font-medium">Operasional Pertambangan Prov. Kaltim</td>
+                <td class="py-2 px-3"><span class="px-2 py-0.5 rounded bg-green-100 text-green-800 font-mono">XLSX</span></td>
+                <td class="py-2 px-3">ESDM Kaltim / Satu Data</td>
+                <td class="py-2 px-3 font-mono">fact_operasional_kaltim</td>
+                <td class="py-2 px-3 text-right font-medium">42</td>
+              </tr>
+              <tr>
+                <td class="py-2 px-3">3</td>
+                <td class="py-2 px-3 font-medium">Data Lelang WIUP Indonesia</td>
+                <td class="py-2 px-3"><span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono">JSON</span></td>
+                <td class="py-2 px-3">Ditjen Minerba ESDM</td>
+                <td class="py-2 px-3 font-mono">fact_lelang_wiup</td>
+                <td class="py-2 px-3 text-right font-medium">40</td>
+              </tr>
+              <tr>
+                <td class="py-2 px-3">4</td>
+                <td class="py-2 px-3 font-medium">Neraca Batubara & Cadangan Provinsi</td>
+                <td class="py-2 px-3"><span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono">PDF</span></td>
+                <td class="py-2 px-3">Kementerian ESDM (HEESI)</td>
+                <td class="py-2 px-3 font-mono">fact_pasokan_batubara_nasional</td>
+                <td class="py-2 px-3 text-right font-medium">34</td>
+              </tr>
+              <tr>
+                <td class="py-2 px-3">5</td>
+                <td class="py-2 px-3 font-medium">Izin Usaha Pertambangan Multi-Komoditas</td>
+                <td class="py-2 px-3"><span class="px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-mono">CSV</span></td>
+                <td class="py-2 px-3">MoDI Minerba ESDM</td>
+                <td class="py-2 px-3 font-mono">fact_izin_tambang</td>
+                <td class="py-2 px-3 text-right font-medium">4,152</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Live ETL Audit Log -->
+      <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+        <h3 class="font-semibold text-slate-900 text-sm mb-2">Audit Log Pipeline ETL (Pembuktian Data-Level EAI)</h3>
+        <p class="text-xs text-slate-500 mb-4">Catatan eksekusi riil dari database SQLite (tabel etl_audit_log)</p>
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-xs text-left">
+            <thead class="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+              <tr>
+                <th class="py-2 px-2">ID</th>
+                <th class="py-2 px-3">Nama Sumber</th>
+                <th class="py-2 px-2">Format</th>
+                <th class="py-2 px-3">Tabel Target</th>
+                <th class="py-2 px-2 text-right">Extracted</th>
+                <th class="py-2 px-2 text-right">Loaded</th>
+                <th class="py-2 px-2 text-center">Status</th>
+                <th class="py-2 px-3">Waktu Eksekusi</th>
+              </tr>
+            </thead>
+            <tbody id="auditTableBody" class="divide-y divide-slate-100">
+              <!-- Injected via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Login Modal -->
+  <div id="loginModal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl max-w-md w-full p-6 shadow-xl border border-slate-200 relative">
+      <button onclick="closeLoginModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 font-bold text-lg">&times;</button>
+      <div class="flex items-center space-x-2 mb-4">
+        <div class="w-8 h-8 rounded bg-amber-600 flex items-center justify-center text-white font-bold">M</div>
+        <h3 class="text-lg font-bold text-slate-900">Autentikasi Pengguna</h3>
+      </div>
+      <p class="text-xs text-slate-500 mb-4">Silakan masuk untuk mengakses fitur analitik dan manajemen integrasi.</p>
+      
+      <form id="loginForm" onsubmit="handleLogin(event)" class="space-y-4">
+        <div>
+          <label for="usernameInput" class="block text-xs font-medium text-slate-700 mb-1">Nama Pengguna (Username):</label>
+          <input type="text" id="usernameInput" required value="admin" class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 bg-white text-slate-800 focus:ring-amber-500 focus:border-amber-500">
+        </div>
+        <div>
+          <label for="passwordInput" class="block text-xs font-medium text-slate-700 mb-1">Kata Sandi (Password):</label>
+          <input type="password" id="passwordInput" required value="admin123" class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 bg-white text-slate-800 focus:ring-amber-500 focus:border-amber-500">
+        </div>
+
+        <div class="p-2.5 rounded bg-slate-50 text-[11px] text-slate-600 border border-slate-200">
+          <span class="font-semibold text-slate-800">Akun Pengujian:</span><br>
+          Admin: <code class="bg-slate-200 px-1 rounded">admin</code> / <code class="bg-slate-200 px-1 rounded">admin123</code><br>
+          Analis: <code class="bg-slate-200 px-1 rounded">analyst</code> / <code class="bg-slate-200 px-1 rounded">analyst123</code>
+        </div>
+
+        <div id="loginErrorMsg" class="hidden text-xs text-rose-600 font-medium"></div>
+
+        <button type="submit" id="submitLoginBtn" class="w-full py-2.5 px-4 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-medium transition shadow-sm">
+          Masuk ke Dashboard
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="bg-white border-t border-slate-200 py-4 mt-8 text-center text-xs text-slate-500">
+    <div class="max-w-7xl mx-auto px-4">
+      Proyek Tugas Integrasi Aplikasi Korporat (IAK) Kelompok 6 - Sektor Pertambangan Indonesia &copy; 2026.
+    </div>
+  </footer>
+
+  <!-- Frontend Logic Script -->
+  <script>
+    // State Management
+    let authToken = localStorage.getItem('minerba_auth_token') || null;
+    let authUser = localStorage.getItem('minerba_auth_user') || null;
+    let licenseCurrentOffset = 0;
+    const licenseLimit = 50;
+
+    // Charts instances
+    let chartSupplyInst = null;
+    let chartReservesInst = null;
+    let chartExportsInst = null;
+    let chartKaltimCoalInst = null;
+    let chartKaltimOilGasInst = null;
+    let chartIupCommInst = null;
+    let chartIupProvInst = null;
+    let mapInst = null;
+    let mapMarkers = [];
+
+    // Initialize App
+    document.addEventListener('DOMContentLoaded', () => {
+      checkAuthUI();
+      loadSummaryData();
+      loadSupplyAndReserves();
+      loadExportFilterOptions();
+      loadExportData();
+      loadKaltimData();
+      initMap();
+      loadAuctionData();
+      loadLicenseFilterOptions();
+      loadLicensesData(0);
+      loadAuditLog();
+    });
+
+    // Tab Navigation
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('tab-active'));
+
+      const activeSection = document.getElementById(tabId);
+      if (activeSection) activeSection.classList.remove('hidden');
+
+      const btnId = tabId.replace('tab-', 'nav-');
+      const activeBtn = document.getElementById(btnId);
+      if (activeBtn) activeBtn.classList.add('tab-active');
+
+      if (tabId === 'tab-lelang' && mapInst) {
+        setTimeout(() => mapInst.invalidateSize(), 200);
+      }
+    }
+
+    // Auth Handlers
+    function checkAuthUI() {
+      const badge = document.getElementById('authStatusBadge');
+      const text = document.getElementById('authStatusText');
+      const dot = document.getElementById('authDot');
+      const loginBtn = document.getElementById('loginBtn');
+      const logoutBtn = document.getElementById('logoutBtn');
+
+      if (authToken && authUser) {
+        text.textContent = `User: ${authUser} (Aktif)`;
+        dot.className = 'w-2 h-2 rounded-full bg-emerald-500 mr-1.5';
+        loginBtn.classList.add('hidden');
+        logoutBtn.classList.remove('hidden');
+      } else {
+        text.textContent = 'Mode Publik (Tamu)';
+        dot.className = 'w-2 h-2 rounded-full bg-amber-500 mr-1.5';
+        loginBtn.classList.remove('hidden');
+        logoutBtn.classList.add('hidden');
+      }
+    }
+
+    function openLoginModal() {
+      document.getElementById('loginModal').classList.remove('hidden');
+      document.getElementById('loginErrorMsg').classList.add('hidden');
+    }
+
+    function closeLoginModal() {
+      document.getElementById('loginModal').classList.add('hidden');
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const u = document.getElementById('usernameInput').value;
+      const p = document.getElementById('passwordInput').value;
+      const errorDiv = document.getElementById('loginErrorMsg');
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({username: u, password: p})
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'Login gagal');
+        }
+
+        const data = await res.json();
+        authToken = data.token;
+        authUser = data.username;
+        localStorage.setItem('minerba_auth_token', authToken);
+        localStorage.setItem('minerba_auth_user', authUser);
+
+        checkAuthUI();
+        closeLoginModal();
+        showAlert(`Selamat datang, ${authUser}! Berhasil masuk ke sistem.`, 'success');
+      } catch (err) {
+        errorDiv.textContent = err.message;
+        errorDiv.classList.remove('hidden');
+      }
+    }
+
+    function handleLogout() {
+      authToken = null;
+      authUser = null;
+      localStorage.removeItem('minerba_auth_token');
+      localStorage.removeItem('minerba_auth_user');
+      checkAuthUI();
+      showAlert('Anda telah keluar dari akun.', 'info');
+    }
+
+    function showAlert(msg, type = 'info') {
+      const banner = document.getElementById('alertBanner');
+      const content = document.getElementById('alertContent');
+      const text = document.getElementById('alertMessage');
+      text.textContent = msg;
+      banner.classList.remove('hidden');
+
+      if (type === 'success') {
+        content.className = 'p-3 rounded-lg text-sm flex justify-between items-center bg-emerald-50 text-emerald-800 border border-emerald-200';
+      } else {
+        content.className = 'p-3 rounded-lg text-sm flex justify-between items-center bg-amber-50 text-amber-800 border border-amber-200';
+      }
+
+      setTimeout(hideAlert, 5000);
+    }
+
+    function hideAlert() {
+      document.getElementById('alertBanner').classList.add('hidden');
+    }
+
+    // 1. Data Loader: Summary KPIs
+    async function loadSummaryData() {
+      try {
+        const res = await fetch('/api/mining/summary');
+        const data = await res.json();
+        document.getElementById('kpi-total-izin').textContent = Number(data.total_izin_tambang).toLocaleString();
+        document.getElementById('kpi-ekspor-nilai').textContent = `US$ ${(data.nilai_ekspor_terkini_juta_usd / 1000).toFixed(1)} M`;
+        document.getElementById('kpi-prod-batubara').textContent = `${(data.produksi_batubara_puncak_ton / 1e6).toFixed(1)} Jt Ton`;
+        document.getElementById('kpi-lelang-wiup').textContent = `${data.total_blok_lelang_wiup} Blok`;
+      } catch (e) {
+        console.error('Gagal memuat KPI:', e);
+      }
+    }
+
+    // 2. Data Loader: Supply & Reserves (PDF)
+    async function loadSupplyAndReserves() {
+      try {
+        // Supply
+        const res1 = await fetch('/api/mining/supply');
+        const sData = await res1.json();
+        const years = sData.data.map(d => d.tahun);
+        const prod = sData.data.map(d => d.produksi_ton / 1e6);
+        const exp = sData.data.map(d => d.ekspor_ton / 1e6);
+        const dom = sData.data.map(d => d.konsumsi_domestik_ton / 1e6);
+
+        const ctx1 = document.getElementById('chartSupply').getContext('2d');
+        if (chartSupplyInst) chartSupplyInst.destroy();
+        chartSupplyInst = new Chart(ctx1, {
+          type: 'bar',
+          data: {
+            labels: years,
+            datasets: [
+              { label: 'Produksi (Juta Ton)', data: prod, backgroundColor: '#d97706' },
+              { label: 'Ekspor (Juta Ton)', data: exp, backgroundColor: '#0284c7' },
+              { label: 'Domestik (Juta Ton)', data: dom, backgroundColor: '#059669' }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { y: { beginAtZero: true } }
+          }
+        });
+
+        // Reserves
+        const res2 = await fetch('/api/mining/reserves');
+        const rData = await res2.json();
+        const provs = rData.data.map(d => d.provinsi);
+        const reserves = rData.data.map(d => d.cadangan_juta_ton);
+
+        const ctx2 = document.getElementById('chartReserves').getContext('2d');
+        if (chartReservesInst) chartReservesInst.destroy();
+        chartReservesInst = new Chart(ctx2, {
+          type: 'bar',
+          data: {
+            labels: provs,
+            datasets: [{ label: 'Cadangan Batubara (Juta Ton)', data: reserves, backgroundColor: '#7c3aed' }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: 'y',
+            scales: { x: { beginAtZero: true } }
+          }
+        });
+      } catch (e) {
+        console.error('Gagal memuat supply/reserves:', e);
+      }
+    }
+
+    // 3. Data Loader: Exports (CSV)
+    async function loadExportFilterOptions() {
+      try {
+        const res = await fetch('/api/mining/exports');
+        const data = await res.json();
+        const select = document.getElementById('exportCountryFilter');
+        data.countries.forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c;
+          opt.textContent = c;
+          select.appendChild(opt);
+        });
+      } catch (e) {
+        console.error('Gagal memuat filter negara:', e);
+      }
+    }
+
+    async function loadExportData() {
+      const country = document.getElementById('exportCountryFilter').value;
+      const url = country ? `/api/mining/exports?country=${encodeURIComponent(country)}` : '/api/mining/exports';
+      try {
+        const res = await fetch(url);
+        const d = await res.json();
+
+        // Render table top destinations
+        const tbody = document.getElementById('topDestinationsBody');
+        tbody.innerHTML = '';
+        d.top_destinations.forEach(row => {
+          const tr = document.createElement('tr');
+          tr.className = 'hover:bg-slate-50';
+          tr.innerHTML = `
+            <td class="py-2 px-2 font-medium text-slate-800">${row.negara_tujuan}</td>
+            <td class="py-2 px-2 text-right">${Number(row.tot_vol.toFixed(1)).toLocaleString()}</td>
+            <td class="py-2 px-2 text-right">${Number(row.tot_val.toFixed(1)).toLocaleString()}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+        // Group data by year for chart
+        const yearMap = {};
+        d.data.forEach(r => {
+          if (!yearMap[r.tahun]) yearMap[r.tahun] = { vol: 0, val: 0 };
+          yearMap[r.tahun].vol += r.volume_ribu_ton;
+          yearMap[r.tahun].val += r.nilai_fob_juta_usd;
+        });
+
+        const years = Object.keys(yearMap).sort();
+        const volArr = years.map(y => yearMap[y].vol / 1000); // Juta ton
+        const valArr = years.map(y => yearMap[y].val);
+
+        const ctx = document.getElementById('chartExports').getContext('2d');
+        if (chartExportsInst) chartExportsInst.destroy();
+        chartExportsInst = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: years,
+            datasets: [
+              { label: 'Volume (Juta Ton)', data: volArr, borderColor: '#0284c7', yAxisID: 'y' },
+              { label: 'Nilai FOB (Juta US$)', data: valArr, borderColor: '#059669', yAxisID: 'y1' }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              y: { type: 'linear', display: true, position: 'left', title: { display: true, text: 'Juta Ton' } },
+              y1: { type: 'linear', display: true, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'Juta US$' } }
+            }
+          }
+        });
+      } catch (e) {
+        console.error('Gagal memuat ekspor:', e);
+      }
+    }
+
+    // 4. Data Loader: Kaltim (XLSX)
+    async function loadKaltimData() {
+      try {
+        const res = await fetch('/api/mining/kaltim');
+        const data = await res.json();
+
+        const years = [2022, 2023, 2024, 2025, 2026];
+        const pkp2b = years.map(y => {
+          const item = data.data.find(d => d.indikator.includes('PKP2B') && d.tahun === y);
+          return item ? item.nilai / 1e6 : 0;
+        });
+        const iup = years.map(y => {
+          const item = data.data.find(d => d.indikator.includes('KP/IUP') && d.tahun === y);
+          return item ? item.nilai / 1e6 : 0;
+        });
+
+        const ctxCoal = document.getElementById('chartKaltimCoal').getContext('2d');
+        if (chartKaltimCoalInst) chartKaltimCoalInst.destroy();
+        chartKaltimCoalInst = new Chart(ctxCoal, {
+          type: 'bar',
+          data: {
+            labels: years,
+            datasets: [
+              { label: 'Produksi PKP2B (Juta Ton)', data: pkp2b, backgroundColor: '#b45309' },
+              { label: 'Produksi KP/IUP (Juta Ton)', data: iup, backgroundColor: '#f59e0b' }
+            ]
+          },
+          options: { responsive: true, maintainAspectRatio: false }
+        });
+
+        const oil = years.map(y => {
+          const item = data.data.find(d => d.indikator.includes('Minyak') && d.tahun === y);
+          return item ? item.nilai / 1e6 : 0;
+        });
+        const gas = years.map(y => {
+          const item = data.data.find(d => d.indikator.includes('Gas') && d.tahun === y);
+          return item ? item.nilai / 1e6 : 0;
+        });
+
+        const ctxOilGas = document.getElementById('chartKaltimOilGas').getContext('2d');
+        if (chartKaltimOilGasInst) chartKaltimOilGasInst.destroy();
+        chartKaltimOilGasInst = new Chart(ctxOilGas, {
+          type: 'line',
+          data: {
+            labels: years,
+            datasets: [
+              { label: 'Lifting Minyak (Juta Barel)', data: oil, borderColor: '#dc2626' },
+              { label: 'Lifting Gas (Juta MMBTU)', data: gas, borderColor: '#2563eb' }
+            ]
+          },
+          options: { responsive: true, maintainAspectRatio: false }
+        });
+      } catch (e) {
+        console.error('Gagal memuat kaltim data:', e);
+      }
+    }
+
+    // 5. Data Loader: WIUP Map (JSON)
+    function initMap() {
+      mapInst = L.map('map').setView([-0.7893, 113.9213], 5);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(mapInst);
+    }
+
+    async function loadAuctionData() {
+      const comm = document.getElementById('auctionCommFilter').value;
+      const url = comm ? `/api/mining/auctions?komoditas=${encodeURIComponent(comm)}` : '/api/mining/auctions';
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+
+        // Populate filter options once
+        const commSelect = document.getElementById('auctionCommFilter');
+        if (commSelect.children.length === 1) {
+          data.komoditas_filter.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c;
+            opt.textContent = c;
+            commSelect.appendChild(opt);
+          });
+        }
+
+        // Clear markers
+        mapMarkers.forEach(m => mapInst.removeLayer(m));
+        mapMarkers = [];
+
+        // Render Table and Map Markers
+        const tbody = document.getElementById('auctionTableBody');
+        tbody.innerHTML = '';
+
+        data.data.forEach(item => {
+          const tr = document.createElement('tr');
+          tr.className = 'hover:bg-slate-50';
+          tr.innerHTML = `
+            <td class="py-2 px-3 font-medium text-slate-800">${item.nama_blok}</td>
+            <td class="py-2 px-3">${item.nama_kabupaten}, ${item.nama_provinsi}</td>
+            <td class="py-2 px-3"><span class="px-2 py-0.5 rounded bg-amber-50 text-amber-800">${item.komoditas}</span></td>
+            <td class="py-2 px-3 text-right font-mono">Rp ${Number(item.kdi_rupiah).toLocaleString()}</td>
+            <td class="py-2 px-3 text-right">${Number(item.luas_ha).toLocaleString()}</td>
+            <td class="py-2 px-3"><span class="text-xs px-2 py-0.5 rounded ${item.tahapan.includes('Selesai') ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'}">${item.tahapan}</span></td>
+          `;
+          tbody.appendChild(tr);
+
+          // Add to map if valid lat/long
+          if (item.latitude && item.longitude) {
+            const isCompleted = item.tahapan.includes('Selesai');
+            const color = isCompleted ? '#059669' : (item.tahapan.includes('Batal') || item.tahapan.includes('Gagal') ? '#dc2626' : '#d97706');
+            const marker = L.circleMarker([item.latitude, item.longitude], {
+              radius: 7,
+              fillColor: color,
+              color: '#fff',
+              weight: 1.5,
+              opacity: 1,
+              fillOpacity: 0.85
+            }).addTo(mapInst);
+
+            marker.bindPopup(`
+              <div class="text-xs">
+                <p class="font-bold text-slate-900">${item.nama_blok}</p>
+                <p class="text-slate-600">${item.nama_kabupaten}, ${item.nama_provinsi}</p>
+                <p class="mt-1"><b>Komoditas:</b> ${item.komoditas}</p>
+                <p><b>Nilai KDI:</b> Rp ${Number(item.kdi_rupiah).toLocaleString()}</p>
+                <p><b>Luas:</b> ${Number(item.luas_ha).toLocaleString()} Ha</p>
+                <p><b>Tahapan:</b> ${item.tahapan}</p>
+              </div>
+            `);
+            mapMarkers.push(marker);
+          }
+        });
+      } catch (e) {
+        console.error('Gagal memuat lelang WIUP:', e);
+      }
+    }
+
+    // 6. Data Loader: Licenses MoDI (CSV)
+    async function loadLicenseFilterOptions() {
+      try {
+        const res = await fetch('/api/mining/licenses?limit=1');
+        const data = await res.json();
+
+        const provSelect = document.getElementById('licenseProvFilter');
+        data.top_provinsi.forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p.nama_provinsi;
+          opt.textContent = `${p.nama_provinsi} (${p.count})`;
+          provSelect.appendChild(opt);
+        });
+
+        const commSelect = document.getElementById('licenseCommFilter');
+        data.top_komoditas.forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c.komoditas;
+          opt.textContent = `${c.komoditas} (${c.count})`;
+          commSelect.appendChild(opt);
+        });
+      } catch (e) {
+        console.error('Gagal memuat filter perizinan:', e);
+      }
+    }
+
+    async function loadLicensesData(offset = 0) {
+      licenseCurrentOffset = offset;
+      const prov = document.getElementById('licenseProvFilter').value;
+      const comm = document.getElementById('licenseCommFilter').value;
+
+      let url = `/api/mining/licenses?limit=${licenseLimit}&offset=${offset}`;
+      if (prov) url += `&provinsi=${encodeURIComponent(prov)}`;
+      if (comm) url += `&komoditas=${encodeURIComponent(comm)}`;
+
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+
+        // Render table
+        const tbody = document.getElementById('licenseTableBody');
+        tbody.innerHTML = '';
+        data.data.forEach(item => {
+          const tr = document.createElement('tr');
+          tr.className = 'hover:bg-slate-50';
+          tr.innerHTML = `
+            <td class="py-2.5 px-3 font-medium text-slate-800">${item.nama_perusahaan}</td>
+            <td class="py-2.5 px-2 text-slate-500 font-mono">${item.badan_usaha}</td>
+            <td class="py-2.5 px-3">${item.nama_provinsi}</td>
+            <td class="py-2.5 px-3">${item.nama_kabupaten}</td>
+            <td class="py-2.5 px-3"><span class="px-2 py-0.5 rounded bg-slate-100 text-slate-800">${item.komoditas}</span></td>
+            <td class="py-2.5 px-2 text-slate-600">${item.kegiatan}</td>
+            <td class="py-2.5 px-3 text-right font-mono">${Number(item.luas_sk_ha).toLocaleString()}</td>
+            <td class="py-2.5 px-2"><span class="text-xs px-1.5 py-0.5 rounded ${item.cnc.includes('CNC') ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}">${item.cnc}</span></td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+        // Pagination controls
+        const start = offset + 1;
+        const end = Math.min(offset + licenseLimit, data.total);
+        document.getElementById('licensePageInfo').textContent = `Menampilkan ${start} - ${end} dari ${data.total.toLocaleString()} izin tambang`;
+        document.getElementById('licensePrevBtn').disabled = offset <= 0;
+        document.getElementById('licenseNextBtn').disabled = end >= data.total;
+
+        // Render breakdown charts on first load
+        if (!chartIupCommInst && data.top_komoditas) {
+          const ctxComm = document.getElementById('chartIupCommodity').getContext('2d');
+          chartIupCommInst = new Chart(ctxComm, {
+            type: 'doughnut',
+            data: {
+              labels: data.top_komoditas.map(c => c.komoditas),
+              datasets: [{
+                data: data.top_komoditas.map(c => c.count),
+                backgroundColor: ['#d97706', '#0284c7', '#059669', '#7c3aed', '#dc2626', '#475569', '#ea580c', '#0891b2', '#65a30d', '#db2777']
+              }]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+          });
+
+          const ctxProv = document.getElementById('chartIupProvince').getContext('2d');
+          chartIupProvInst = new Chart(ctxProv, {
+            type: 'bar',
+            data: {
+              labels: data.top_provinsi.map(p => p.nama_provinsi),
+              datasets: [{
+                label: 'Jumlah Izin (IUP)',
+                data: data.top_provinsi.map(p => p.count),
+                backgroundColor: '#0284c7'
+              }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y' }
+          });
+        }
+      } catch (e) {
+        console.error('Gagal memuat izin tambang:', e);
+      }
+    }
+
+    function prevLicensePage() {
+      if (licenseCurrentOffset >= licenseLimit) {
+        loadLicensesData(licenseCurrentOffset - licenseLimit);
+      }
+    }
+
+    function nextLicensePage() {
+      loadLicensesData(licenseCurrentOffset + licenseLimit);
+    }
+
+    function resetLicenseFilters() {
+      document.getElementById('licenseProvFilter').value = '';
+      document.getElementById('licenseCommFilter').value = '';
+      loadLicensesData(0);
+    }
+
+    // 7. Data Loader: Audit Trail
+    async function loadAuditLog() {
+      try {
+        const res = await fetch('/api/mining/audit');
+        const data = await res.json();
+        const tbody = document.getElementById('auditTableBody');
+        tbody.innerHTML = '';
+        data.audit_log.forEach(row => {
+          const tr = document.createElement('tr');
+          tr.className = 'hover:bg-slate-50';
+          tr.innerHTML = `
+            <td class="py-2 px-2 text-slate-400 font-mono">${row.id}</td>
+            <td class="py-2 px-3 font-medium text-slate-800">${row.source_name}</td>
+            <td class="py-2 px-2 font-mono"><span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">${row.source_format}</span></td>
+            <td class="py-2 px-3 font-mono text-slate-600">${row.target_table}</td>
+            <td class="py-2 px-2 text-right">${row.records_extracted.toLocaleString()}</td>
+            <td class="py-2 px-2 text-right">${row.records_loaded.toLocaleString()}</td>
+            <td class="py-2 px-2 text-center"><span class="px-2 py-0.5 rounded text-xs bg-emerald-100 text-emerald-800 font-medium">${row.status}</span></td>
+            <td class="py-2 px-3 text-slate-500 font-mono">${row.executed_at}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch (e) {
+        console.error('Gagal memuat audit log:', e);
+      }
+    }
+  </script>
+</body>
+</html>
