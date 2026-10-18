@@ -73,16 +73,38 @@ flowchart LR
 
 ## 4. Development Workflow & Quality Gates
 
-### Aturan Eksekusi Wajib
-1. **Sebelum Eksekusi Plan**:
-   - Wajib memuat dan mematuhi `skill://antislop` (mencegah desain generic/AI slop, delivery gate, 3 state UI).
-   - Wajib memuat dan mematuhi `skill://j-space` (penalaran bertahap, state preservation, registri kerja).
-   - Mematuhi `skill://karpathy-guidelines` (Think before coding, surgical changes, no unneeded complexity).
-2. **Setelah Pembuatan/Perubahan Kode**:
-   - Wajib menjalankan sinkronisasi CodeGraph:
+### Siklus Eksekusi Wajib (Standard Execution Lifecycle)
+
+Setiap agen yang menjalankan tugas WAJIB mematuhi 5 tahapan kerja berurutan berikut:
+
+1. **Investigasi & Code Intelligence (CodeGraph First)**:
+   - Repositori telah diindeks oleh CodeGraph (`.codegraph/`).
+   - **WAJIB gunakan `codegraph_explore` (MCP) atau `codegraph explore "<query>"` (CLI)** SEBELUM menggunakan `grep`, `find`, atau membaca file manual untuk memetakan simbol, rute API, dan blast radius.
+   - Gunakan `graphify` (`skill://graphify` / `graphify query`) jika butuh analisis arsitektur makro atau relasi lintas dataset/dokumen.
+
+2. **Muat Skill & Rancang Low-Level To-Do List**:
+   - **Baca Skill Terlebih Dahulu**: Wajib memuat `skill://<nama>` yang relevan sebelum menulis solusi:
+     - `skill://karpathy-guidelines` (prinsip surgical changes, anti over-engineering).
+     - `skill://antislop` (wajib untuk pengerjaan UI, styling, copy teks, dan evaluasi 3-state UI).
+     - `skill://j-space` (penalaran bertahap & state preservation).
+   - **Buat Low-Level To-Do List**: Pecah tugas menjadi checklist teknis yang konkret dan granular (nama file, fungsi/endpoint target, dan batasan implementasi), bukan rencana abstrak.
+
+3. **Eksekusi Bertahap (Execute per Checklist)**:
+   - Kerjakan implementasi satu per satu secara disiplin mengikuti to-do list.
+   - Batasi perubahan hanya pada scope to-do aktif; hindari refactor liar atau abstraksi yang tidak diminta.
+
+4. **Verifikasi & Validasi Hasil**:
+   - Lakukan pengujian langsung (smoke run: jalankan server, script ETL, curl endpoint, atau cek UI) untuk membuktikan perubahan benar-benar berfungsi tanpa error.
+   - Sinkronisasi indeks CodeGraph:
      ```bash
      codegraph sync .
      ```
+
+5. **Atomic Commit dengan Rincian Jelas**:
+   - Lakukan commit per unit pekerjaan logis (atomic commit, pisahkan modul/fitur yang tidak saling terikat).
+   - Pesan commit wajib mencantumkan detail konkret:
+     - Komponen/fitur yang diubah.
+     - Ringkasan aksi (apa yang ditambah, dihapus, atau diperbaiki).
 
 ### Tahapan Kerja (Phased Roadmap)
 - **Tahap 1: Pengumpulan & Standarisasi Dataset Pertambangan** (5 dataset, min 3 format berbeda, simpan di `data/raw/`).
