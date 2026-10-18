@@ -42,9 +42,9 @@ def log_audit(
     )
 
 def seed_auth_user(conn: sqlite3.Connection) -> None:
+    conn.execute("DELETE FROM auth_users WHERE username = 'analyst'")
     default_users = [
         ("admin", hash_password("admin123"), "admin"),
-        ("analyst", hash_password("analyst123"), "analyst"),
     ]
     for username, pwd_hash, role in default_users:
         conn.execute(

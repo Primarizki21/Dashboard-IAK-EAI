@@ -11,7 +11,7 @@ Dashboard analitik terintegrasi berbasis web untuk tugas besar mata kuliah **Int
 
 ## 1. Fitur Utama Aplikasi
 
-1. **Sistem Login & Proteksi Sesi**: Otentikasi pengguna berbasis token dengan role Administrator dan Analyst.
+1. **Sistem Login & Proteksi Sesi**: Otentikasi pengguna berbasis token sesi untuk akses dashboard administrator.
 2. **Ringkasan Eksekutif & Neraca Energi**: Visualisasi pasokan batubara nasional dan cadangan per provinsi diekstraksi dari publikasi resmi PDF Kementerian ESDM.
 3. **Analitik Ekspor Global (BPS CSV)**: Visualisasi tren ekspor batubara 2012-2024 (Volume & FOB Value) dengan filter dinamis negara tujuan.
 4. **Indikator Operasional Kaltim (ESDM XLSX)**: Analisis komparasi produksi batubara PKP2B vs IUP, lifting migas, serta komitmen reklamasi lingkungan vs penertiban penambangan liar.
@@ -55,7 +55,6 @@ Buka peramban di: **`http://127.0.0.1:8000`**
 
 ### Kredensial Login Pengujian
 * **Administrator:** `admin` / `admin123`
-* **Analis Data:** `analyst` / `analyst123`
 
 ---
 

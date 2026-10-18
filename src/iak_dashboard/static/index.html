@@ -484,9 +484,8 @@
         </div>
 
         <div class="p-2.5 rounded bg-slate-50 text-[11px] text-slate-600 border border-slate-200">
-          <span class="font-semibold text-slate-800">Akun Pengujian:</span><br>
-          Admin: <code class="bg-slate-200 px-1 rounded">admin</code> / <code class="bg-slate-200 px-1 rounded">admin123</code><br>
-          Analis: <code class="bg-slate-200 px-1 rounded">analyst</code> / <code class="bg-slate-200 px-1 rounded">analyst123</code>
+          <span class="font-semibold text-slate-800">Akun Pengujian (Admin):</span><br>
+          Username: <code class="bg-slate-200 px-1 rounded font-mono">admin</code> | Password: <code class="bg-slate-200 px-1 rounded font-mono">admin123</code>
         </div>
 
         <div id="loginErrorMsg" class="hidden text-xs text-rose-600 font-medium"></div>
@@ -510,6 +509,12 @@
     // State Management
     let authToken = localStorage.getItem('minerba_auth_token') || null;
     let authUser = localStorage.getItem('minerba_auth_user') || null;
+    if (authUser && authUser !== 'admin') {
+      authToken = null;
+      authUser = null;
+      localStorage.removeItem('minerba_auth_token');
+      localStorage.removeItem('minerba_auth_user');
+    }
     let licenseCurrentOffset = 0;
     const licenseLimit = 50;
 
@@ -565,7 +570,7 @@
       const logoutBtn = document.getElementById('logoutBtn');
 
       if (authToken && authUser) {
-        text.textContent = `User: ${authUser} (Aktif)`;
+        text.textContent = `Admin: ${authUser} (Aktif)`;
         dot.className = 'w-2 h-2 rounded-full bg-emerald-500 mr-1.5';
         loginBtn.classList.add('hidden');
         logoutBtn.classList.remove('hidden');

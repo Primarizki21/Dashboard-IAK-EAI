@@ -117,7 +117,7 @@ CREATE TABLE IF NOT EXISTS auth_users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'analyst',
+    role TEXT NOT NULL DEFAULT 'admin',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 """

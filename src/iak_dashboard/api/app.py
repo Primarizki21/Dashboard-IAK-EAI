@@ -37,12 +37,15 @@ def me(user: dict = Depends(get_current_user)):
 app.include_router(mining_router)
 
 # Mount Static/Frontend files
-STATIC_DIR = Path("src/iak_dashboard/static")
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 os.makedirs(STATIC_DIR, exist_ok=True)
 
 @app.get("/", response_class=HTMLResponse, tags=["Web Interface"])
 def index():
     html_file = STATIC_DIR / "index.html"
     if html_file.exists():
-        return FileResponse(html_file)
+        return FileResponse(
+            html_file,
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
+        )
     return HTMLResponse("<h1>IAK Mining Dashboard API is running.</h1><p>Frontend is loading...</p>")

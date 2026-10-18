@@ -167,7 +167,7 @@ Melalui dashboard EVD (*Exploratory Visual Dashboard*), diperoleh temuan-temuan 
 ## 7. FITUR APLIKASI DASHBOARD & PANDUAN PENGGUNAAN
 
 ### 7.1 Fitur Utama Antarmuka Web
-1. **Sistem Login & Proteksi Sesi:** Otentikasi berbasis token dengan modal login interaktif. Mendukung peran *Administrator* dan *Data Analyst*.
+1. **Sistem Login & Proteksi Sesi:** Otentikasi berbasis token dengan modal login interaktif untuk akun Administrator (`admin` / `admin123`).
 2. **Executive Overview (Ringkasan KPI):** Kartu ringkasan metrik instan, grafik neraca pasokan batubara (PDF), dan grafik cadangan batubara per provinsi (PDF).
 3. **Global Trade Analytics:** Visualisasi time-series interaktif volume dan nilai FOB ekspor 2012-2024 dengan filter dinamis negara tujuan.
 4. **Regional Mining Operations:** Analisis komparasi produksi batubara PKP2B vs IUP serta metrik reklamasi lingkungan Kaltim.
@@ -197,7 +197,6 @@ Aplikasi dapat diakses langsung melalui peramban web pada alamat:
 
 **Kredensial Login Pengujian:**
 * Administrator: `admin` / `admin123`
-* Analis Data: `analyst` / `analyst123`
 
 ---
 
