@@ -23,22 +23,13 @@
             <th class="n">KDI</th><th class="n">Peserta</th><th>Tahap</th></tr></thead><tbody id="tBlok"></tbody></table></div>`, })}
       </div>`;
 
-    const map = L.map('map', { scrollWheelZoom: false }).setView([-2.2, 118], 5);
+    const map = L.map('map', { scrollWheelZoom: true }).setView([-2.2, 118], 5);
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap', maxZoom: 12, className: 'tiles-muted',
     }).addTo(map);
     const layer = L.layerGroup().addTo(map);
     const colors = { good: css('--good'), bad: css('--bad'), retry: css('--warn') };
 
-    map.on('click', () => map.scrollWheelZoom.enable());
-    map.on('mouseout', () => map.scrollWheelZoom.disable());
-    map.getContainer().addEventListener('wheel', (e) => {
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        if (e.deltaY < 0) map.zoomIn();
-        else if (e.deltaY > 0) map.zoomOut();
-      }
-    }, { passive: false });
     const draw = async () => {
       const q = new URLSearchParams(Object.entries(state).filter(([, v]) => v)).toString();
       const d = q ? await Api.get(`lelang?${q}`) : base;
