@@ -139,8 +139,8 @@ html:not(.authed) .topbar, html:not(.authed) #view {{ display: none; }}
 """
     OUT.parent.mkdir(exist_ok=True)
     OUT.write_text(html, encoding="utf-8")
-    print(f"Tersimpan: {OUT} ({OUT.stat().st_size / 1024:,.0f} KB)")
-
+    (ROOT / "index.html").write_text(html, encoding="utf-8")
+    print(f"Tersimpan: {OUT} ({OUT.stat().st_size / 1024:,.0f} KB) & {ROOT / 'index.html'}")
 
 if __name__ == "__main__":
     main()
