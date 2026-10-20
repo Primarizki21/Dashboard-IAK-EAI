@@ -26,6 +26,12 @@ class LoginResponse(BaseModel):
     username: str
     role: str
 
+def hash_password(password: str, salt: Optional[str] = None, iterations: int = 200_000) -> str:
+    salt = salt or secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), iterations)
+    return f"pbkdf2${iterations}${salt}${digest.hex()}"
+
+
 
 def verify_password(password: str, stored: str) -> bool:
     try:

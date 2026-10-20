@@ -179,10 +179,13 @@ def get_connection(db_path: Path = DB_PATH) -> sqlite3.Connection:
 
 
 def _drop_outdated_persistent(conn: sqlite3.Connection) -> None:
-    """Basis data dari versi lama punya etl_audit_log tanpa run_id; tabel itu dibuat ulang."""
+    """Basis data dari versi lama punya etl_audit_log dan etl_quality_check tanpa run_id."""
     cols = [r[1] for r in conn.execute("PRAGMA table_info(etl_audit_log)")]
     if cols and "run_id" not in cols:
         conn.execute("DROP TABLE etl_audit_log")
+    qc_cols = [r[1] for r in conn.execute("PRAGMA table_info(etl_quality_check)")]
+    if qc_cols and "run_id" not in qc_cols:
+        conn.execute("DROP TABLE etl_quality_check")
     user_cols = [r[1] for r in conn.execute("PRAGMA table_info(auth_users)")]
     if user_cols:
         row = conn.execute("SELECT password_hash FROM auth_users LIMIT 1").fetchone()
@@ -190,12 +193,23 @@ def _drop_outdated_persistent(conn: sqlite3.Connection) -> None:
             conn.execute("DELETE FROM auth_users")
 
 
+def seed_auth_user(conn: sqlite3.Connection) -> None:
+    exists = conn.execute("SELECT 1 FROM auth_users WHERE username = 'admin'").fetchone()
+    if not exists:
+        from iak_dashboard.api.auth import hash_password
+        conn.execute(
+            "INSERT INTO auth_users (username, password_hash, role) VALUES (?, ?, 'admin')",
+            ("admin", hash_password("admin123")),
+        )
+
+
 def init_db(db_path: Path = DB_PATH) -> None:
-    """Buat tabel permanen bila belum ada (dipakai juga oleh server saat start)."""
+    """Buat tabel permanen bila belum ada dan pastikan pengguna admin tersedia."""
     conn = get_connection(db_path)
     with conn:
         _drop_outdated_persistent(conn)
         conn.executescript(DDL_PERSISTENT)
+        seed_auth_user(conn)
     conn.close()
 
 

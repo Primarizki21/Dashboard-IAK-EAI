@@ -28,6 +28,16 @@ NO_CACHE = {"Cache-Control": "no-cache, no-store, must-revalidate"}
 @app.on_event("startup")
 def ensure_schema() -> None:
     init_db()
+    with closing(get_connection()) as conn:
+        try:
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(fact_izin_tambang)")]
+            count = conn.execute("SELECT COUNT(*) FROM fact_pasokan_batubara_nasional").fetchone()[0]
+            needs_etl = ("komoditas_id" not in cols) or (count == 0)
+        except Exception:
+            needs_etl = True
+    if needs_etl:
+        from iak_dashboard.etl.pipeline import run_pipeline
+        run_pipeline()
 
 
 @app.post("/api/auth/login", response_model=LoginResponse, tags=["Auth"])

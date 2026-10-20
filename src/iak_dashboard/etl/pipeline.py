@@ -28,19 +28,14 @@ from iak_dashboard.etl.harmonize import (
     normalize_komoditas,
     normalize_provinsi,
 )
-from iak_dashboard.etl.schema import PROJECT_ROOT, get_connection, init_db, rebuild_analytic_tables
+from iak_dashboard.api.auth import hash_password
+from iak_dashboard.etl.schema import PROJECT_ROOT, get_connection, init_db, rebuild_analytic_tables, seed_auth_user
 
 RAW_DIR = PROJECT_ROOT / "data" / "raw"
 
 # Batas wilayah Indonesia untuk validasi koordinat WIUP
 LAT_RANGE = (-11.5, 6.5)
 LON_RANGE = (94.5, 141.5)
-
-
-def hash_password(password: str, salt: Optional[str] = None, iterations: int = 200_000) -> str:
-    salt = salt or secrets.token_hex(16)
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), iterations)
-    return f"pbkdf2${iterations}${salt}${digest.hex()}"
 
 
 def now() -> str:
@@ -292,14 +287,6 @@ def run_pipeline() -> Dict[str, object]:
     print(f"=== ETL selesai: {status} ===")
     return {"run_id": run.run_id, "status": status, "tables": summary}
 
-
-def seed_auth_user(conn: sqlite3.Connection) -> None:
-    exists = conn.execute("SELECT 1 FROM auth_users WHERE username = 'admin'").fetchone()
-    if not exists:
-        conn.execute(
-            "INSERT INTO auth_users (username, password_hash, role) VALUES (?, ?, 'admin')",
-            ("admin", hash_password("admin123")),
-        )
 
 
 if __name__ == "__main__":
