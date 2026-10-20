@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Masuk · Neraca Tambang</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/app.css?v=31">
+</head>
+<body>
+<div class="login">
+  <section class="login-form">
+    <div class="login-card">
+      <h1><svg class="mark" viewBox="0 0 28 16" aria-hidden="true"><polyline points="1,14.9 3.6,14.8 6.2,15 8.8,14.8 11.4,11.2 14,9.1 16.6,11 19.2,9.2 21.8,6.5 24.4,3.2 27,1"/></svg>Neraca Tambang</h1>
+      <p>Dashboard data pertambangan Indonesia: produksi, ekspor, izin, dan lelang wilayah tambang.</p>
+      <form id="loginForm" novalidate>
+        <label class="field">Nama pengguna
+          <input id="username" name="username" autocomplete="username" required autofocus>
+        </label>
+        <label class="field">Kata sandi
+          <input id="password" name="password" type="password" autocomplete="current-password" required>
+        </label>
+        <p class="err" id="err" role="alert"></p>
+        <button class="btn primary" type="submit" id="submitBtn">Masuk</button>
+      </form>
+    </div>
+  </section>
+
+  <aside class="login-visual" aria-label="Sekilas data">
+    <div class="lv-inner">
+      <div class="lv-label" id="lvLabel">Produksi batubara nasional</div>
+      <div class="lv-big"><span id="lvBig">–</span><small>juta ton</small></div>
+      <div class="lv-sub" id="lvSub"></div>
+      <div class="lv-chart"><canvas id="lvChart" role="img" aria-label="Produksi dan ekspor batubara per tahun"></canvas></div>
+      <div class="lv-legend"><span><i class="a"></i>Produksi</span><span><i class="b"></i>Ekspor</span></div>
+      <dl class="lv-stats">
+        <div><dt id="sIzin">–</dt><dd>izin usaha tambang</dd></div>
+        <div><dt id="sKom">–</dt><dd>jenis komoditas</dd></div>
+        <div><dt id="sLelang">–</dt><dd>blok dilelang</dd></div>
+      </dl>
+      <p class="lv-src">Sumber: HEESI 2024 Kementerian ESDM, BPS, MoDI, Ditjen Minerba, Dinas ESDM Kaltim</p>
+    </div>
+  </aside>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="/static/js/api.js?v=31"></script>
+<script>
+  if (Auth.token()) location.replace('/dashboard');
+
+  const form = document.getElementById('loginForm');
+  const err = document.getElementById('err');
+  const btn = document.getElementById('submitBtn');
+  if (new URLSearchParams(location.search).get('r') === 'expired') err.textContent = 'Sesi berakhir. Silakan masuk lagi.';
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    err.textContent = '';
+    const username = form.username.value.trim();
+    const password = form.password.value;
+    if (!username || !password) { err.textContent = 'Isi nama pengguna dan kata sandi.'; return; }
+    btn.disabled = true; btn.textContent = 'Memeriksa…';
+    try {
+      await Auth.login(username, password);
+      location.replace('/dashboard');
+    } catch (ex) {
+      err.textContent = ex.message;
+      btn.disabled = false; btn.textContent = 'Masuk';
+      form.password.select();
+    }
+  });
+
+  // Panel kanan: angka agregat dari endpoint publik
+  const n = (v, d = 1) => Number(v).toLocaleString('id-ID', { minimumFractionDigits: d, maximumFractionDigits: d });
+  fetch('/api/public/sekilas').then((r) => r.json()).then(async (d) => {
+    await document.fonts.ready;
+    const N = d.neraca, a = N[0], z = N.at(-1);
+    document.getElementById('lvLabel').textContent = `Produksi batubara nasional ${z.tahun}`;
+    document.getElementById('lvBig').textContent = n(z.produksi_ton / 1e6);
+    document.getElementById('lvSub').textContent =
+      `Naik ${n((z.produksi_ton / a.produksi_ton - 1) * 100, 0)}% sejak ${a.tahun}; ${n(z.ekspor_ton / z.produksi_ton * 100, 0)}% diekspor`;
+    document.getElementById('sIzin').textContent = n(d.izin, 0);
+    document.getElementById('sKom').textContent = d.komoditas;
+    document.getElementById('sLelang').textContent = d.blok_lelang;
+    const ink = 'rgba(240,239,236,', line = (data, color) => ({
+      data, borderColor: color, borderWidth: 2, pointRadius: 0, tension: 0, fill: false,
+    });
+    new Chart(document.getElementById('lvChart'), {
+      type: 'line',
+      data: { labels: N.map((r) => r.tahun), datasets: [
+        line(N.map((r) => r.produksi_ton / 1e6), '#6aa6ee'), line(N.map((r) => r.ekspor_ton / 1e6), '#f08a5d'),
+      ] },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false, events: [],
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+        scales: {
+          x: { grid: { display: false }, border: { color: `${ink}0.25)` },
+               ticks: { color: `${ink}0.55)`, maxRotation: 0, autoSkipPadding: 16, font: { family: 'IBM Plex Sans', size: 11 } } },
+          y: { beginAtZero: true, grid: { color: `${ink}0.08)` }, border: { display: false },
+               ticks: { color: `${ink}0.55)`, maxTicksLimit: 5, font: { family: 'IBM Plex Sans', size: 11 }, callback: (v) => v.toLocaleString('id-ID') } },
+        },
+      },
+    });
+  }).catch(() => { document.querySelector('.login-visual').hidden = true; });
+</script>
+</body>
+</html>

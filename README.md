@@ -1,108 +1,84 @@
-# MINERBA EAI - Dashboard Integrasi Sektor Pertambangan Indonesia
+# Neraca Tambang
 
-Dashboard analitik terintegrasi berbasis web untuk tugas besar mata kuliah **Integrasi Aplikasi Korporat (IAK)** — Fakultas Teknologi Maju dan Multidisiplin (FTMM), Universitas Airlangga.
+Dashboard data batubara Indonesia untuk tugas Integrasi Aplikasi Korporat (IAK), Kelompok 6, FTMM Universitas Airlangga.
 
-* **Kelompok:** Kelompok 6
-* **Topik:** 06 - Pertambangan (Mining)
-* **Prinsip Utama:** **Data-Level EAI** (Enterprise Application Integration)
-* **Format Sumber Data:** **4 Format Berbeda** (CSV, XLSX, JSON, PDF)
+Lima berkas sumber dalam empat format (CSV, XLSX, JSON, PDF) diekstrak, diseragamkan, divalidasi, lalu dimuat ke satu basis data SQLite (`data/processed/unified_mining.db`). Dashboard membaca basis data itu lewat API FastAPI yang wajib login.
 
----
+## Sumber data
 
-## 1. Fitur Utama Aplikasi
+| Berkas | Format | Penerbit | Diperoleh dari | Tabel tujuan |
+|---|---|---|---|---|
+| `export_coal_by_country.csv` | CSV | BPS | Salinan tabel BPS di repositori `supertypeai/coalresearch` | `fact_ekspor_batubara` |
+| `kaltim_mining_operations.xlsx` | XLSX | Dinas ESDM Kaltim | Portal Satu Data Kaltim | `fact_operasional_kaltim` |
+| `wiup_auctions.json` | JSON | Ditjen Minerba | Salinan data lelang WIUP di `supertypeai/coalresearch` | `fact_lelang_wiup` |
+| `esdm_heesi_statistics.pdf` | PDF | Kementerian ESDM | HEESI 2024, esdm.go.id (Tabel 6.1.1 dan 6.1.2) | `fact_pasokan_batubara_nasional`, `fact_cadangan_batubara_provinsi` |
+| `modi_mining_licenses.csv` | CSV | MoDI ESDM | Salinan data MoDI di `supertypeai/coalresearch` | `fact_izin_tambang` |
 
-1. **Arsitektur Multi-Page & Proteksi Sesi**:
-   - **Landing Page Publik (`/`)**: Menampilkan teaser ringkasan eksekutif, status integrasi sistem, 5 kartu dataset interaktif dengan animasi hover lift dan direct outbound link ke portal resmi, serta modal login terautentikasi.
-   - **Dashboard Analitik Terproteksi (`/dashboard`)**: Ruang kerja *Exploratory Visual Dashboard* (EVD) multi-tab yang diproteksi route guard berbasis token sesi (`admin` / `admin123`).
-2. **Ringkasan Eksekutif & Neraca Energi (PDF HEESI 2024)**: Visualisasi tren pasokan batubara nasional 2014-2024 (produksi, ekspor, konsumsi DMO) dan estimasi cadangan terbukti per provinsi yang diekstraksi dari publikasi resmi PDF Kementerian ESDM.
-3. **Analitik Ekspor Global (BPS CSV)**: Visualisasi tren ekspor batubara 2012-2024 (Volume & FOB Value) dengan filter dinamis 11 negara tujuan utama.
-4. **Indikator Operasional Kaltim (ESDM XLSX)**: Analisis komparasi produksi batubara PKP2B vs IUP, lifting migas, serta komitmen reklamasi lingkungan vs penertiban penambangan liar.
-5. **Peta Sebaran Lelang WIUP (ESDM JSON)**: Peta geospasial interaktif (Leaflet.js) untuk 40 blok lelang tambang di Indonesia dengan detail koordinat, filter status, dan nilai Kompensasi Data Informasi (KDI).
-6. **Master Direktori 4,152 Izin Usaha Pertambangan (MoDI CSV)**: Tabel data multi-komoditas nasional dengan pencarian real-time, filter provinsi/komoditas, dan pagination dinamis.
-7. **Audit Trail Data-Level EAI**: Log eksekusi pipeline ETL real-time dari basis data SQLite untuk pembuktian lineage data, status transaksi, dan jumlah baris terintegrasi.
----
+`scripts/download_raw_data.py` mengunduh ulang semua berkas.
 
-## 2. Matriks 5 Dataset Heterogen (4 Format)
+## Apa yang dilakukan ETL
 
-| No | Dataset | Format | Sumber Resmi & Metode Ekstraksi | Tabel Target Database | Jumlah Baris |
-|:--:|---|:---:|---|---|:---:|
-| 1 | Ekspor Batubara per Negara 2012-2024 | **CSV** | BPS (Statistik Perdagangan Luar Negeri - Ekspor Bulanan/Tahunan) | `fact_ekspor_batubara` | 143 |
-| 2 | Operasional Pertambangan Prov. Kaltim | **XLSX** | Dinas ESDM Prov. Kaltim (Portal Open Data CKAN Kaltim) | `fact_operasional_kaltim` | 42 |
-| 3 | Lelang Wilayah Izin Usaha Pertambangan | **JSON** | Ditjen Minerba ESDM (Web Scraping API Portal Lelang WIUP) | `fact_lelang_wiup` | 40 |
-| 4 | Neraca Pasokan & Cadangan Batubara | **PDF** | Kementerian ESDM (Buku Statistik HEESI 2024 - Hal. 76 & 77) | `fact_pasokan_batubara_nasional` & `fact_cadangan_batubara_provinsi` | 34 |
-| 5 | Direktori Izin Usaha Pertambangan | **CSV** | MoDI ESDM (Web Scraping Direktori Perizinan Tambang Nasional) | `fact_izin_tambang` | 4,152 |
----
+- **Harmonisasi dimensi.** Nama provinsi (termasuk nama berbahasa Inggris di HEESI) dan komoditas (`COAL`/`BATUBARA`, `NICKEL`/`NIKEL`/`NIKEL DMP`, dst.) dipetakan ke `dim_provinsi` dan `dim_komoditas`. Tabel fakta menyimpan `provinsi_id`/`komoditas_id`, jadi data cadangan (PDF), izin (CSV), dan lelang (JSON) bisa digabung per provinsi. Kamusnya ada di `src/iak_dashboard/etl/harmonize.py`.
+- **Nilai kosong tetap kosong.** Tanda `─` di data BPS disimpan sebagai NULL, bukan 0.
+- **Validasi.** Jumlah per negara dicocokkan dengan baris Total BPS. Jumlah cadangan dicocokkan dengan baris TOTAL di PDF. Koordinat WIUP harus berada di wilayah Indonesia. Tahun yang belum selesai di data Kaltim ditandai `berjalan`, dan indikator yang nilainya sama setiap tahun ditandai.
+- **Audit.** Setiap eksekusi mendapat `run_id`. Jumlah baris diekstrak/dimuat/ditolak, durasi, dan status per sumber dicatat di `etl_audit_log`; hasil tiap aturan validasi dicatat di `etl_quality_check`. Satu sumber yang gagal tidak menghentikan sumber lain.
 
-## 3. Tech Stack & Prasyarat
+## Menjalankan
 
-* **Environment & Package Manager:** Python 3.12+, Astral `uv`
-* **Backend API & Auth:** FastAPI, Uvicorn, Python `hashlib` (SHA-256 Auth Guard)
-* **Data-Level EAI Engine:** Pandas, OpenPyXL (Excel), PDFPlumber (PDF Table Extractor), SQLite3
-* **Frontend & Visualisasi:** Tailwind CSS, Chart.js, Leaflet.js (Geospatial Mapping), Modular ES6 JS
+Butuh Python 3.12 atau lebih baru.
 
----
-
-## 4. Cara Menjalankan Aplikasi (Menggunakan Astral `uv`)
-
-Pastikan Astral `uv` telah terpasang di sistem (`curl -LsSf https://astral.sh/uv/install.sh | sh`).
+Dengan `uv`:
 
 ```bash
-# 1. Masuk ke direktori proyek
-git clone <URL_REPOSITORY_ANDA>
-cd iak-dashboard
-
-# 2. Sinkronisasi dependensi virtualenv
 uv sync
-
-# 3. Jalankan pipeline ETL (Wajib saat kloning pertama untuk memuat data ke SQLite)
-uv run python3 src/iak_dashboard/etl/pipeline.py
-
-# 4. Jalankan aplikasi web dashboard
+uv run python src/iak_dashboard/etl/pipeline.py
 uv run iak-dashboard
 ```
 
-Buka peramban di: **`http://127.0.0.1:8000`**
+Tanpa `uv` (Windows):
 
-### Kredensial Login Pengujian
-* **Administrator:** `admin` / `admin123`
+```bash
+python -m venv .venv
+.venv\Scripts\pip install -e .
+.venv\Scripts\python src\iak_dashboard\etl\pipeline.py
+.venv\Scripts\iak-dashboard
+```
 
----
+Buka http://127.0.0.1:8000. Akun demo: `admin` / `admin123`.
 
-## 5. Struktur Proyek
+Server akan menjalankan ETL otomatis bila basis data belum ada. Jalankan `pipeline.py` lagi kapan saja untuk memuat ulang data; riwayat eksekusi tetap tersimpan.
+
+## Halaman dashboard
+
+Setiap halaman mencantumkan sumber datanya di bawah judul.
+
+| Menu | Isi | Sumber |
+|---|---|---|
+| Ringkasan | Satu angka utama dari tiap sumber, neraca produksi–ekspor, izin per komoditas | semua |
+| Produksi & Ekspor Batubara | Tren dan peringkat negara tujuan (volume/nilai), harga per ton, ekspor BPS vs HEESI | CSV BPS, PDF HEESI |
+| Izin Tambang per Provinsi | Izin dan cadangan per provinsi; klik provinsi untuk menyaring daftar izin; unduh CSV | CSV MoDI, PDF HEESI |
+| Lelang Lahan Tambang Baru | Peta blok WIUP yang dilelang, KDI per komoditas, daftar blok | JSON Ditjen Minerba |
+| Operasional Tambang Kaltim | Produksi per jenis izin, porsi dari produksi nasional, lifting migas, indikator lingkungan | XLSX ESDM Kaltim, PDF HEESI |
+| Sumber Data & ETL | Hasil load per sumber, hasil validasi, hubungan tabel, riwayat ETL | `etl_*` |
+
+Halaman masuk menampilkan angka ringkas dari endpoint publik `/api/public/sekilas`; semua data rinci tetap wajib login.
+
+## Struktur
 
 ```
-iak-dashboard/
-├── README.md                  # Dokumentasi ringkas proyek
-├── pyproject.toml             # Konfigurasi proyek Python Astral uv
-├── data/
-│   ├── raw/                   # 5 Dataset mentah (CSV, XLSX, JSON, PDF)
-│   └── processed/             # Unified SQLite database (unified_mining.db)
-├── docs/
-│   └── LAPORAN_EAI_PERTAMBANGAN.md  # Laporan teknis lengkap (Bobot 40%)
-├── scripts/
-│   └── download_raw_data.py   # Skrip pengunduh otomatis data mentah
-└── src/
-    └── iak_dashboard/
-        ├── __init__.py        # Entrypoint CLI
-        ├── api/               # Backend FastAPI & Auth
-        │   ├── app.py
-        │   ├── auth.py
-        │   └── mining.py
-        ├── etl/               # Modul ETL per format
-        │   ├── extractors.py
-        │   ├── pipeline.py
-        │   └── schema.py
-        └── static/            # Frontend Web Dashboard Modular
-            ├── landing.html   # Halaman depan publik & form login
-            ├── dashboard.html # Dashboard analitik terproteksi (EVD)
-            ├── css/
-            │   └── dashboard.css
-            └── js/
-                ├── auth.js    # Sesi & route guard
-                ├── landing.js # Teaser KPI publik & handler login
-                ├── charts.js  # Visualisasi Chart.js (PDF, CSV, XLSX)
-                ├── map.js     # Peta spasial Leaflet.js (JSON)
-                ├── licenses.js# Master direktori 4,152 IUP (CSV)
-                ├── audit.js   # Audit trail pipeline ETL
-                └── dashboard.js # Bootstrapper dashboard & tab nav
+data/raw/                      berkas sumber
+data/processed/                unified_mining.db (dibuat oleh ETL)
+src/iak_dashboard/
+  etl/extractors.py            pembaca per format
+  etl/harmonize.py             kamus provinsi & komoditas
+  etl/schema.py                skema SQLite
+  etl/pipeline.py              alur ETL, validasi, audit
+  api/auth.py                  login, sesi, hash kata sandi (PBKDF2)
+  api/mining.py                endpoint data (wajib login)
+  api/app.py                   aplikasi FastAPI
+  static/login.html            halaman masuk
+  static/dashboard.html        kerangka dashboard
+  static/css/app.css           gaya
+  static/js/                   api.js, viz.js (grafik), app.js (navigasi), pages/*.js
+docs/                          laporan
 ```

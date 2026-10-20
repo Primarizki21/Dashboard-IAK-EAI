@@ -4,39 +4,44 @@ Menerapkan prinsip Data-Level EAI: standarisasi skema, pembersihan nilai cacat, 
 """
 import json
 from pathlib import Path
-from typing import Tuple, List, Dict, Any
+from typing import Tuple, List, Dict, Any, Optional
 import pandas as pd
 import pdfplumber
 
-def extract_coal_exports(csv_path: Path) -> pd.DataFrame:
+def extract_coal_exports(csv_path: Path) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Ekstraksi data ekspor batubara BPS (Format: CSV).
-    Menangani layout ganda: tabel berat bersih (Ribu Ton) dan nilai FOB (Juta USD).
+    Satu berkas berisi dua tabel: berat bersih (ribu ton) dan nilai FOB (juta USD).
+    Tanda "─" di sumber berarti data tidak tersedia, jadi disimpan sebagai NULL (bukan 0).
+    Mengembalikan (data per negara-tahun, baris Total dari sumber untuk validasi).
     """
     raw = pd.read_csv(csv_path, header=None)
     years = [int(y) for y in raw.iloc[2, 1:14].values]
 
     def clean_num(series: pd.Series) -> pd.Series:
-        s = series.astype(str).str.replace(",", "").str.replace("─", "0").str.replace("-", "0").str.strip()
-        return pd.to_numeric(s, errors="coerce").fillna(0.0)
+        s = series.astype(str).str.replace(",", "").str.strip()
+        s = s.replace({"─": None, "-": None, "": None, "nan": None})
+        return pd.to_numeric(s, errors="coerce")
 
-    # Berat Bersih (Net Weight): baris 4 sampai 14
-    df_w = raw.iloc[4:15, 0:14].copy()
-    df_w.columns = ["country"] + years
-    df_w = df_w.melt(id_vars=["country"], var_name="year", value_name="volume_ribu_ton")
-    df_w["volume_ribu_ton"] = clean_num(df_w["volume_ribu_ton"])
+    def block(start: int, value_name: str) -> pd.DataFrame:
+        # 11 baris negara, lalu 1 baris Total
+        df = raw.iloc[start:start + 12, 0:14].copy()
+        df.columns = ["negara_tujuan"] + years
+        df["negara_tujuan"] = df["negara_tujuan"].astype(str).str.strip()
+        df = df.melt(id_vars=["negara_tujuan"], var_name="tahun", value_name=value_name)
+        df[value_name] = clean_num(df[value_name])
+        df["tahun"] = df["tahun"].astype(int)
+        return df
 
-    # Nilai FOB (FOB Value): baris 18 sampai 28
-    df_v = raw.iloc[18:29, 0:14].copy()
-    df_v.columns = ["country"] + years
-    df_v = df_v.melt(id_vars=["country"], var_name="year", value_name="nilai_fob_juta_usd")
-    df_v["nilai_fob_juta_usd"] = clean_num(df_v["nilai_fob_juta_usd"])
+    w = block(4, "volume_ribu_ton")
+    v = block(18, "nilai_fob_juta_usd")
+    merged = pd.merge(w, v, on=["negara_tujuan", "tahun"])
 
-    merged = pd.merge(df_w, df_v, on=["country", "year"])
-    merged["country"] = merged["country"].astype(str).str.strip()
-    merged.rename(columns={"country": "negara_tujuan", "year": "tahun"}, inplace=True)
-    merged["source_format"] = "CSV"
-    return merged
+    is_total = merged["negara_tujuan"].str.lower() == "total"
+    totals = merged[is_total].drop(columns=["negara_tujuan"]).reset_index(drop=True)
+    data = merged[~is_total].reset_index(drop=True)
+    data["source_format"] = "CSV"
+    return data, totals
 
 def extract_kaltim_operations(xlsx_path: Path) -> pd.DataFrame:
     """
@@ -99,60 +104,63 @@ def extract_wiup_auctions(json_path: Path) -> pd.DataFrame:
         })
     return pd.DataFrame(records)
 
-def extract_heesi_pdf(pdf_path: Path) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def extract_heesi_pdf(pdf_path: Path) -> Tuple[pd.DataFrame, pd.DataFrame, Optional[float]]:
     """
     Ekstraksi statistik batubara nasional dari publikasi HEESI ESDM 2024 (Format: PDF).
     Tabel 1: Neraca Pasokan Batubara Nasional 2014-2024 (Hal. 77, Tabel 6.1.2).
     Tabel 2: Cadangan dan Sumber Daya Batubara per Provinsi Des 2024 (Hal. 76, Tabel 6.1.1).
+    Konsumsi domestik tidak ada di tabel ini, jadi dihitung: produksi - ekspor + impor.
+    Mengembalikan (neraca, cadangan per provinsi, total cadangan menurut baris TOTAL di PDF).
     """
     supply_records: List[Dict[str, Any]] = []
     reserves_records: List[Dict[str, Any]] = []
+    reserves_total: Optional[float] = None
+
+    def num(cell: Any) -> float:
+        return float(str(cell).replace(",", "").strip())
 
     with pdfplumber.open(pdf_path) as pdf:
         # 1. Pasokan Batubara Nasional dari Halaman 77 (Tabel 6.1.2) - Rentang 2014-2024
-        p77 = pdf.pages[76]
-        for table in p77.extract_tables():
+        for table in pdf.pages[76].extract_tables():
             for row in table:
                 if not row or not row[0]:
                     continue
                 yr_str = str(row[0]).split()[0]
                 if yr_str.isdigit():
-                    year = int(yr_str)
-                    prod = float(str(row[1]).replace(",", "").strip()) if row[1] else 0.0
-                    exp = float(str(row[2]).replace(",", "").strip()) if row[2] else 0.0
-                    imp = float(str(row[3]).replace(",", "").strip()) if row[3] else 0.0
-                    dom = prod - exp + imp
+                    prod, exp, imp = num(row[1]), num(row[2]), num(row[3])
                     supply_records.append({
-                        "tahun": year,
+                        "tahun": int(yr_str),
                         "produksi_ton": prod,
                         "ekspor_ton": exp,
                         "impor_ton": imp,
-                        "konsumsi_domestik_ton": dom,
+                        "konsumsi_domestik_ton": prod - exp + imp,
                         "source_format": "PDF"
                     })
 
         # 2. Cadangan Batubara per Provinsi dari Halaman 76 (Tabel 6.1.1) - Status Des 2024
-        p76 = pdf.pages[75]
-        for table in p76.extract_tables():
+        for table in pdf.pages[75].extract_tables():
             for row in table:
                 if not row or len(row) < 10 or not row[1]:
                     continue
                 prov = str(row[1]).replace("\n", " ").strip()
-                if prov in ["Province", "TOTAL", "None"] or not prov:
-                    continue
                 try:
-                    res_total = float(str(row[7]).replace(",", "").strip())
-                    reserves = float(str(row[9]).replace(",", "").strip())
+                    if prov == "TOTAL":
+                        reserves_total = num(row[9])
+                        continue
+                    if prov in ["Province", "None"] or not prov:
+                        continue
                     reserves_records.append({
                         "provinsi": prov,
-                        "sumberdaya_juta_ton": res_total,
-                        "cadangan_juta_ton": reserves,
+                        "sumberdaya_juta_ton": num(row[7]),
+                        "cadangan_juta_ton": num(row[9]),
                         "source_format": "PDF"
                     })
                 except (ValueError, TypeError):
                     continue
 
-    return pd.DataFrame(supply_records), pd.DataFrame(reserves_records)
+    return pd.DataFrame(supply_records), pd.DataFrame(reserves_records), reserves_total
+
+
 def extract_modi_licenses(csv_path: Path) -> pd.DataFrame:
     """
     Ekstraksi data perizinan pertambangan nasional MoDI ESDM (Format: CSV).

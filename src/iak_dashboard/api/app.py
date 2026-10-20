@@ -1,62 +1,72 @@
 """
-Aplikasi FastAPI utama untuk Dashboard IAK Pertambangan (Data-Level EAI).
+Aplikasi FastAPI: halaman masuk, dashboard, dan API data hasil integrasi.
 """
-import os
+from contextlib import closing
 from pathlib import Path
-from fastapi import FastAPI, Depends
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, FileResponse
+from typing import Optional
+
+from fastapi import Depends, FastAPI, Header
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from iak_dashboard.api.auth import authenticate_user, get_current_user, LoginRequest, LoginResponse
+from iak_dashboard.api.auth import (
+    LoginRequest,
+    LoginResponse,
+    authenticate_user,
+    get_current_user,
+    logout,
+)
 from iak_dashboard.api.mining import router as mining_router
+from iak_dashboard.etl.schema import get_connection, init_db
 
-app = FastAPI(
-    title="IAK Mining Dashboard API",
-    description="Data-Level EAI Platform untuk Integrasi Data Pertambangan Indonesia",
-    version="1.0.0",
-)
+app = FastAPI(title="Neraca Tambang API", version="2.0.0")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+NO_CACHE = {"Cache-Control": "no-cache, no-store, must-revalidate"}
 
-# Registrasi Router
-@app.post("/api/auth/login", response_model=LoginResponse, tags=["Authentication"])
+
+@app.on_event("startup")
+def ensure_schema() -> None:
+    init_db()
+
+
+@app.post("/api/auth/login", response_model=LoginResponse, tags=["Auth"])
 def login(req: LoginRequest):
     return authenticate_user(req)
 
-@app.get("/api/auth/me", tags=["Authentication"])
+
+@app.post("/api/auth/logout", tags=["Auth"])
+def do_logout(authorization: Optional[str] = Header(None)):
+    logout(authorization)
+    return {"ok": True}
+
+
+@app.get("/api/auth/me", tags=["Auth"])
 def me(user: dict = Depends(get_current_user)):
     return user
 
-app.include_router(mining_router)
 
-# Mount Static/Frontend files
-STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
-os.makedirs(STATIC_DIR, exist_ok=True)
+@app.get("/api/public/sekilas", tags=["Publik"])
+def sekilas():
+    """Angka agregat untuk halaman masuk. Hanya ringkasan; data rinci tetap wajib login."""
+    with closing(get_connection()) as conn:
+        neraca = [dict(r) for r in conn.execute(
+            "SELECT tahun, produksi_ton, ekspor_ton FROM fact_pasokan_batubara_nasional ORDER BY tahun")]
+        izin = conn.execute("SELECT COUNT(*) FROM fact_izin_tambang").fetchone()[0]
+        komoditas = conn.execute("SELECT COUNT(DISTINCT komoditas_id) FROM fact_izin_tambang").fetchone()[0]
+        blok = conn.execute("SELECT COUNT(*) FROM fact_lelang_wiup").fetchone()[0]
+    return {"neraca": neraca, "izin": izin, "komoditas": komoditas, "blok_lelang": blok}
+
+
+app.include_router(mining_router)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-@app.get("/", response_class=HTMLResponse, tags=["Web Interface"])
-def landing():
-    html_file = STATIC_DIR / "landing.html"
-    if html_file.exists():
-        return FileResponse(
-            html_file,
-            headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
-        )
-    return HTMLResponse("<h1>Portal EAI Pertambangan</h1><p>Landing page is loading...</p>")
 
-@app.get("/dashboard", response_class=HTMLResponse, tags=["Web Interface"])
-def dashboard():
-    html_file = STATIC_DIR / "dashboard.html"
-    if html_file.exists():
-        return FileResponse(
-            html_file,
-            headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
-        )
-    return HTMLResponse("<h1>Dashboard EVD Minerba</h1><p>Dashboard is loading...</p>")
+@app.get("/", include_in_schema=False)
+def login_page():
+    return FileResponse(STATIC_DIR / "login.html", headers=NO_CACHE)
+
+
+@app.get("/dashboard", include_in_schema=False)
+def dashboard_page():
+    return FileResponse(STATIC_DIR / "dashboard.html", headers=NO_CACHE)

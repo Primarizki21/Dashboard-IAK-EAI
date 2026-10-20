@@ -1,234 +1,223 @@
 """
-Endpoint REST API untuk agregasi dan analitik data pertambangan terintegrasi (Data-Level EAI).
+Endpoint data dashboard. Semua endpoint membaca unified_mining.db dan wajib login.
 """
-from typing import Optional, List, Dict, Any
-from fastapi import APIRouter, Query
+import csv
+import io
+from contextlib import closing
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
+
+from iak_dashboard.api.auth import get_current_user
 from iak_dashboard.etl.schema import get_connection
 
-router = APIRouter(prefix="/api/mining", tags=["Mining Analytics"])
+router = APIRouter(prefix="/api/mining", tags=["Data"], dependencies=[Depends(get_current_user)])
+
+
+def rows(sql: str, params: tuple = ()) -> List[Dict[str, Any]]:
+    with closing(get_connection()) as conn:
+        return [dict(r) for r in conn.execute(sql, params).fetchall()]
+
+
+def one(sql: str, params: tuple = ()) -> Optional[Dict[str, Any]]:
+    r = rows(sql, params)
+    return r[0] if r else None
+
 
 @router.get("/summary")
-def get_summary() -> Dict[str, Any]:
-    """
-    Ringkasan KPI utama sektor pertambangan Indonesia hasil integrasi 5 dataset.
-    """
-    conn = get_connection()
-    c = conn.cursor()
+def summary() -> Dict[str, Any]:
+    neraca = rows("SELECT tahun, produksi_ton, ekspor_ton FROM fact_pasokan_batubara_nasional ORDER BY tahun")
+    fob = rows("""SELECT tahun, SUM(nilai_fob_juta_usd) AS fob, SUM(volume_ribu_ton) AS vol
+                  FROM fact_ekspor_batubara GROUP BY tahun ORDER BY tahun""")
+    izin = one("""SELECT COUNT(*) AS total,
+                         SUM(k.nama_komoditas = 'Batubara') AS batubara,
+                         COUNT(DISTINCT CASE WHEN k.nama_komoditas = 'Batubara' THEN i.provinsi_id END) AS prov_batubara
+                  FROM fact_izin_tambang i JOIN dim_komoditas k ON k.id = i.komoditas_id""")
+    izin["komoditas"] = one("SELECT COUNT(DISTINCT komoditas_id) AS n FROM fact_izin_tambang")["n"]
+    lelang = one("""SELECT COUNT(*) AS blok, SUM(kdi_rupiah) AS kdi,
+                           SUM(tahapan LIKE '%Selesai%') AS selesai FROM fact_lelang_wiup""")
+    per_komoditas = rows("""SELECT k.nama_komoditas AS komoditas, k.kategori, COUNT(*) AS n
+                            FROM fact_izin_tambang i JOIN dim_komoditas k ON k.id = i.komoditas_id
+                            GROUP BY k.id ORDER BY n DESC""")
+    kaltim = one("""
+        SELECT k.tahun, k.nilai / 1e6 AS kaltim_juta_ton, p.produksi_ton / 1e6 AS nasional_juta_ton
+        FROM fact_operasional_kaltim k JOIN fact_pasokan_batubara_nasional p ON p.tahun = k.tahun
+        WHERE k.indikator LIKE 'Total Produksi Batubara%' AND k.status_periode = 'final'
+        ORDER BY k.tahun DESC LIMIT 1""")
+    return {"neraca": neraca, "fob": fob, "izin": izin, "lelang": lelang, "per_komoditas": per_komoditas,
+            "kaltim": kaltim, "etl": last_run()}
 
-    total_licenses = c.execute("SELECT COUNT(*) FROM fact_izin_tambang").fetchone()[0]
-    total_coal_prod = c.execute("SELECT MAX(produksi_ton) FROM fact_pasokan_batubara_nasional").fetchone()[0] or 0
-    total_export_val_latest = c.execute("SELECT SUM(nilai_fob_juta_usd) FROM fact_ekspor_batubara WHERE tahun = (SELECT MAX(tahun) FROM fact_ekspor_batubara)").fetchone()[0] or 0
-    total_export_vol_latest = c.execute("SELECT SUM(volume_ribu_ton) FROM fact_ekspor_batubara WHERE tahun = (SELECT MAX(tahun) FROM fact_ekspor_batubara)").fetchone()[0] or 0
-    total_auctions = c.execute("SELECT COUNT(*) FROM fact_lelang_wiup").fetchone()[0]
-    total_kdi = c.execute("SELECT SUM(kdi_rupiah) FROM fact_lelang_wiup").fetchone()[0] or 0
-    total_provinces = c.execute("SELECT COUNT(*) FROM dim_provinsi").fetchone()[0]
-    total_commodities = c.execute("SELECT COUNT(*) FROM dim_komoditas").fetchone()[0]
 
-    conn.close()
-    return {
-        "total_izin_tambang": total_licenses,
-        "produksi_batubara_puncak_ton": total_coal_prod,
-        "nilai_ekspor_terkini_juta_usd": round(total_export_val_latest, 2),
-        "volume_ekspor_terkini_ribu_ton": round(total_export_vol_latest, 2),
-        "total_blok_lelang_wiup": total_auctions,
-        "total_nilai_kdi_rupiah": total_kdi,
-        "jumlah_provinsi_terdata": total_provinces,
-        "jumlah_komoditas_terdata": total_commodities,
-    }
+@router.get("/neraca")
+def neraca() -> Dict[str, Any]:
+    return {"data": rows("""SELECT tahun, produksi_ton, ekspor_ton, impor_ton, konsumsi_domestik_ton
+                            FROM fact_pasokan_batubara_nasional ORDER BY tahun""")}
 
-@router.get("/exports")
-def get_exports(country: Optional[str] = None) -> Dict[str, Any]:
-    """
-    Data ekspor batubara menurut negara tujuan (2012–2024) - BPS CSV.
-    """
-    conn = get_connection()
-    c = conn.cursor()
 
-    countries = [r[0] for r in c.execute("SELECT DISTINCT negara_tujuan FROM fact_ekspor_batubara ORDER BY negara_tujuan").fetchall()]
+@router.get("/ekspor")
+def ekspor() -> Dict[str, Any]:
+    tahunan = rows("""SELECT tahun, SUM(volume_ribu_ton) AS volume_ribu_ton,
+                             SUM(nilai_fob_juta_usd) AS nilai_fob_juta_usd
+                      FROM fact_ekspor_batubara GROUP BY tahun ORDER BY tahun""")
+    for r in tahunan:
+        r["harga_usd_per_ton"] = r["nilai_fob_juta_usd"] * 1e6 / (r["volume_ribu_ton"] * 1e3)
+    negara = rows("""SELECT negara_tujuan, tahun, volume_ribu_ton, nilai_fob_juta_usd
+                     FROM fact_ekspor_batubara ORDER BY negara_tujuan, tahun""")
+    urutan = [r["negara_tujuan"] for r in rows(
+        """SELECT negara_tujuan FROM fact_ekspor_batubara
+           WHERE tahun = (SELECT MAX(tahun) FROM fact_ekspor_batubara)
+           ORDER BY COALESCE(volume_ribu_ton, 0) DESC""")]
+    return {"tahunan": tahunan, "negara": negara, "urutan_negara": urutan}
 
-    query = "SELECT negara_tujuan, tahun, volume_ribu_ton, nilai_fob_juta_usd FROM fact_ekspor_batubara"
-    params = []
-    if country:
-        query += " WHERE negara_tujuan = ?"
-        params.append(country)
-    query += " ORDER BY tahun ASC, volume_ribu_ton DESC"
 
-    rows = c.execute(query, params).fetchall()
+@router.get("/rekonsiliasi")
+def rekonsiliasi() -> Dict[str, Any]:
+    """Ekspor menurut HEESI (PDF) dan BPS (CSV) pada tahun yang sama."""
+    return {"data": rows("""
+        SELECT p.tahun, p.ekspor_ton / 1e6 AS heesi_juta_ton, SUM(e.volume_ribu_ton) / 1e3 AS bps_juta_ton
+        FROM fact_pasokan_batubara_nasional p
+        JOIN fact_ekspor_batubara e ON e.tahun = p.tahun
+        GROUP BY p.tahun ORDER BY p.tahun""")}
 
-    # Top destination ranking by total volume
-    top_rank = c.execute("""
-        SELECT negara_tujuan, SUM(volume_ribu_ton) as tot_vol, SUM(nilai_fob_juta_usd) as tot_val
-        FROM fact_ekspor_batubara
-        GROUP BY negara_tujuan
-        ORDER BY tot_vol DESC
-    """).fetchall()
 
-    conn.close()
-    return {
-        "countries": countries,
-        "data": [dict(r) for r in rows],
-        "top_destinations": [dict(r) for r in top_rank],
-    }
+@router.get("/wilayah")
+def wilayah() -> Dict[str, Any]:
+    """Satu baris per provinsi: cadangan (PDF), izin (CSV), lelang (JSON) digabung lewat dim_provinsi."""
+    return {"data": rows("""
+        SELECT d.nama_provinsi, d.pulau,
+               c.cadangan_juta_ton, c.sumberdaya_juta_ton,
+               COALESCE(i.total, 0) AS izin_total, COALESCE(i.batubara, 0) AS izin_batubara,
+               COALESCE(i.luas_ha, 0) AS luas_izin_ha,
+               COALESCE(l.blok, 0) AS blok_lelang, COALESCE(l.kdi, 0) AS kdi_rupiah
+        FROM dim_provinsi d
+        LEFT JOIN fact_cadangan_batubara_provinsi c ON c.provinsi_id = d.id
+        LEFT JOIN (SELECT provinsi_id, COUNT(*) AS total, SUM(luas_sk_ha) AS luas_ha,
+                          SUM(k.nama_komoditas = 'Batubara') AS batubara
+                   FROM fact_izin_tambang f JOIN dim_komoditas k ON k.id = f.komoditas_id
+                   GROUP BY provinsi_id) i ON i.provinsi_id = d.id
+        LEFT JOIN (SELECT provinsi_id, COUNT(*) AS blok, SUM(kdi_rupiah) AS kdi
+                   FROM fact_lelang_wiup GROUP BY provinsi_id) l ON l.provinsi_id = d.id
+        WHERE c.id IS NOT NULL OR i.total IS NOT NULL OR l.blok IS NOT NULL
+        ORDER BY COALESCE(c.cadangan_juta_ton, 0) DESC, izin_total DESC""")}
+
 
 @router.get("/kaltim")
-def get_kaltim() -> Dict[str, Any]:
-    """
-    Indikator operasional pertambangan Provinsi Kalimantan Timur (2022–2026) - ESDM Kaltim XLSX.
-    """
-    conn = get_connection()
-    c = conn.cursor()
+def kaltim() -> Dict[str, Any]:
+    data = rows("""SELECT indikator, tahun, nilai, satuan, status_periode
+                   FROM fact_operasional_kaltim ORDER BY indikator, tahun""")
+    porsi = rows("""
+        SELECT k.tahun, k.nilai / 1e6 AS kaltim_juta_ton, p.produksi_ton / 1e6 AS nasional_juta_ton
+        FROM fact_operasional_kaltim k
+        JOIN fact_pasokan_batubara_nasional p ON p.tahun = k.tahun
+        WHERE k.indikator LIKE 'Total Produksi Batubara%' AND k.status_periode = 'final'
+        ORDER BY k.tahun""")
+    return {"data": data, "porsi_nasional": porsi}
 
-    rows = c.execute("""
-        SELECT indikator, tahun, nilai, satuan 
-        FROM fact_operasional_kaltim 
-        ORDER BY indikator, tahun
-    """).fetchall()
 
-    indicators = [r[0] for r in c.execute("SELECT DISTINCT indikator FROM fact_operasional_kaltim ORDER BY indikator").fetchall()]
-
-    conn.close()
-    return {
-        "indicators": indicators,
-        "data": [dict(r) for r in rows],
-    }
-
-@router.get("/auctions")
-def get_auctions(komoditas: Optional[str] = None, tahapan: Optional[str] = None) -> Dict[str, Any]:
-    """
-    Data blok lelang WIUP Indonesia dengan koordinat geografis (lat, long) - ESDM JSON.
-    """
-    conn = get_connection()
-    c = conn.cursor()
-
-    query = """
-        SELECT id_lelang, nomor, nama_blok, nama_provinsi, nama_kabupaten, pulau, 
-               komoditas, jenis_izin, kegiatan, kdi_rupiah, luas_ha, tahapan, 
-               latitude, longitude, jumlah_peserta
-        FROM fact_lelang_wiup
-        WHERE 1=1
-    """
-    params = []
+@router.get("/lelang")
+def lelang(komoditas: Optional[str] = None, tahapan: Optional[str] = None) -> Dict[str, Any]:
+    where, params = ["1=1"], []
     if komoditas:
-        query += " AND komoditas = ?"
-        params.append(komoditas)
+        where.append("komoditas = ?"); params.append(komoditas)
     if tahapan:
-        query += " AND tahapan = ?"
-        params.append(tahapan)
-
-    query += " ORDER BY kdi_rupiah DESC"
-    rows = c.execute(query, params).fetchall()
-
-    komoditas_list = [r[0] for r in c.execute("SELECT DISTINCT komoditas FROM fact_lelang_wiup WHERE komoditas IS NOT NULL AND komoditas != ''").fetchall()]
-    tahapan_list = [r[0] for r in c.execute("SELECT DISTINCT tahapan FROM fact_lelang_wiup WHERE tahapan IS NOT NULL AND tahapan != ''").fetchall()]
-
-    conn.close()
+        where.append("tahapan = ?"); params.append(tahapan)
+    w = " AND ".join(where)
     return {
-        "komoditas_filter": komoditas_list,
-        "tahapan_filter": tahapan_list,
-        "total": len(rows),
-        "data": [dict(r) for r in rows],
+        "data": rows(f"""SELECT id_lelang, nama_blok, nama_provinsi, nama_kabupaten, komoditas, komoditas_sumber,
+                                kdi_rupiah, luas_ha, tahapan, latitude, longitude, jumlah_peserta
+                         FROM fact_lelang_wiup WHERE {w} ORDER BY kdi_rupiah DESC""", tuple(params)),
+        "per_komoditas": rows(f"""SELECT komoditas, COUNT(*) AS blok, SUM(kdi_rupiah) AS kdi, SUM(luas_ha) AS luas
+                                  FROM fact_lelang_wiup WHERE {w} GROUP BY komoditas ORDER BY kdi DESC""",
+                              tuple(params)),
+        "opsi_komoditas": [r["komoditas"] for r in rows(
+            "SELECT DISTINCT komoditas FROM fact_lelang_wiup ORDER BY komoditas")],
+        "opsi_tahapan": [r["tahapan"] for r in rows(
+            "SELECT DISTINCT tahapan FROM fact_lelang_wiup ORDER BY tahapan")],
     }
 
-@router.get("/supply")
-def get_supply() -> Dict[str, Any]:
-    """
-    Neraca pasokan batubara nasional 2011–2021 (Produksi, Ekspor, Impor, Konsumsi Domestik) - HEESI PDF.
-    """
-    conn = get_connection()
-    c = conn.cursor()
-    rows = c.execute("SELECT tahun, produksi_ton, ekspor_ton, impor_ton, konsumsi_domestik_ton FROM fact_pasokan_batubara_nasional ORDER BY tahun ASC").fetchall()
-    conn.close()
-    return {"data": [dict(r) for r in rows]}
 
-@router.get("/reserves")
-def get_reserves() -> Dict[str, Any]:
-    """
-    Cadangan dan sumber daya batubara per provinsi - HEESI PDF.
-    """
-    conn = get_connection()
-    c = conn.cursor()
-    rows = c.execute("SELECT provinsi, sumberdaya_juta_ton, cadangan_juta_ton FROM fact_cadangan_batubara_provinsi ORDER BY cadangan_juta_ton DESC").fetchall()
-    conn.close()
-    return {"data": [dict(r) for r in rows]}
-
-@router.get("/licenses")
-def get_licenses(
-    provinsi: Optional[str] = None,
-    komoditas: Optional[str] = None,
-    kegiatan: Optional[str] = None,
-    limit: int = Query(50, ge=1, le=500),
-    offset: int = Query(0, ge=0),
-) -> Dict[str, Any]:
-    """
-    Data izin usaha pertambangan multi-komoditas nasional (4,152 izin) - MoDI CSV.
-    """
-    conn = get_connection()
-    c = conn.cursor()
-
-    where_clauses = ["1=1"]
-    params = []
+def _izin_filter(provinsi, komoditas, kegiatan, q):
+    where, params = ["1=1"], []
     if provinsi:
-        where_clauses.append("nama_provinsi = ?")
-        params.append(provinsi)
+        where.append("nama_provinsi = ?"); params.append(provinsi)
     if komoditas:
-        where_clauses.append("komoditas = ?")
-        params.append(komoditas)
+        where.append("komoditas = ?"); params.append(komoditas)
     if kegiatan:
-        where_clauses.append("kegiatan = ?")
-        params.append(kegiatan)
+        where.append("kegiatan = ?"); params.append(kegiatan)
+    if q:
+        where.append("(nama_perusahaan LIKE ? OR nama_kabupaten LIKE ? OR sk_iup LIKE ?)")
+        params += [f"%{q}%"] * 3
+    return " AND ".join(where), tuple(params)
 
-    where_str = " AND ".join(where_clauses)
 
-    count_q = f"SELECT COUNT(*) FROM fact_izin_tambang WHERE {where_str}"
-    total = c.execute(count_q, params).fetchone()[0]
+IZIN_SORT = {"luas": "luas_sk_ha DESC", "nama": "nama_perusahaan ASC", "provinsi": "nama_provinsi, nama_perusahaan"}
 
-    data_q = f"""
-        SELECT id, nama_perusahaan, badan_usaha, jenis_izin, sk_iup, 
-               nama_provinsi, nama_kabupaten, kegiatan, luas_sk_ha, cnc, komoditas
-        FROM fact_izin_tambang
-        WHERE {where_str}
-        ORDER BY luas_sk_ha DESC
-        LIMIT ? OFFSET ?
-    """
-    data_params = params + [limit, offset]
-    rows = c.execute(data_q, data_params).fetchall()
 
-    # Commodity aggregation for chart
-    comm_agg = c.execute("""
-        SELECT komoditas, COUNT(*) as count, SUM(luas_sk_ha) as total_luas_ha
-        FROM fact_izin_tambang
-        GROUP BY komoditas
-        ORDER BY count DESC
-        LIMIT 10
-    """).fetchall()
-
-    # Province aggregation
-    prov_agg = c.execute("""
-        SELECT nama_provinsi, COUNT(*) as count, SUM(luas_sk_ha) as total_luas_ha
-        FROM fact_izin_tambang
-        WHERE nama_provinsi != '-'
-        GROUP BY nama_provinsi
-        ORDER BY count DESC
-        LIMIT 10
-    """).fetchall()
-
-    conn.close()
+@router.get("/izin")
+def izin(provinsi: Optional[str] = None, komoditas: Optional[str] = None, kegiatan: Optional[str] = None,
+         q: Optional[str] = None, sort: str = "luas",
+         limit: int = Query(25, ge=1, le=200), offset: int = Query(0, ge=0)) -> Dict[str, Any]:
+    w, p = _izin_filter(provinsi, komoditas, kegiatan, q)
+    # Grafik komoditas tidak ikut disaring komoditas, supaya pilihan lain tetap terlihat
+    w_kom, p_kom = _izin_filter(provinsi, None, kegiatan, q)
+    order = IZIN_SORT.get(sort, IZIN_SORT["luas"])
     return {
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-        "data": [dict(r) for r in rows],
-        "top_komoditas": [dict(r) for r in comm_agg],
-        "top_provinsi": [dict(r) for r in prov_agg],
+        "total": one(f"SELECT COUNT(*) AS n FROM fact_izin_tambang WHERE {w}", p)["n"],
+        "data": rows(f"""SELECT nama_perusahaan, badan_usaha, sk_iup, nama_provinsi, nama_kabupaten,
+                                komoditas, kegiatan, luas_sk_ha, cnc
+                         FROM fact_izin_tambang WHERE {w} ORDER BY {order} LIMIT ? OFFSET ?""",
+                     p + (limit, offset)),
+        "per_komoditas": rows(f"""SELECT komoditas, COUNT(*) AS n FROM fact_izin_tambang WHERE {w_kom}
+                                  GROUP BY komoditas ORDER BY n DESC""", p_kom),
     }
 
-@router.get("/audit")
-def get_audit_trail() -> Dict[str, Any]:
-    """
-    Log audit ETL untuk pembuktian lineage data dan integrasi Data-Level EAI.
-    """
-    conn = get_connection()
-    c = conn.cursor()
-    rows = c.execute("SELECT id, source_name, source_format, target_table, records_extracted, records_loaded, status, executed_at FROM etl_audit_log ORDER BY id ASC").fetchall()
-    conn.close()
-    return {"audit_log": [dict(r) for r in rows]}
+
+@router.get("/izin.csv")
+def izin_csv(provinsi: Optional[str] = None, komoditas: Optional[str] = None,
+             kegiatan: Optional[str] = None, q: Optional[str] = None):
+    w, p = _izin_filter(provinsi, komoditas, kegiatan, q)
+    data = rows(f"""SELECT nama_perusahaan, badan_usaha, sk_iup, nama_provinsi, nama_kabupaten, komoditas,
+                           kegiatan, luas_sk_ha, cnc FROM fact_izin_tambang WHERE {w}
+                    ORDER BY nama_provinsi, nama_perusahaan""", p)
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=list(data[0].keys()) if data else ["nama_perusahaan"])
+    writer.writeheader()
+    writer.writerows(data)
+    return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv",
+                             headers={"Content-Disposition": "attachment; filename=izin_tambang.csv"})
+
+
+@router.get("/dimensi")
+def dimensi() -> Dict[str, Any]:
+    return {
+        "provinsi": rows("""SELECT DISTINCT d.nama_provinsi, d.pulau FROM dim_provinsi d
+                            JOIN fact_izin_tambang i ON i.provinsi_id = d.id ORDER BY d.nama_provinsi"""),
+        "komoditas": rows("""SELECT DISTINCT k.nama_komoditas, k.kategori FROM dim_komoditas k
+                             JOIN fact_izin_tambang i ON i.komoditas_id = k.id ORDER BY k.nama_komoditas"""),
+        "kegiatan": [r["kegiatan"] for r in rows("SELECT DISTINCT kegiatan FROM fact_izin_tambang ORDER BY 1")],
+    }
+
+
+def last_run() -> Optional[Dict[str, Any]]:
+    run = one("SELECT * FROM etl_run WHERE finished_at IS NOT NULL ORDER BY started_at DESC LIMIT 1")
+    if run:
+        run["sumber"] = one("""SELECT COUNT(*) AS n, SUM(status = 'FAILED') AS gagal,
+                                      SUM(records_rejected) AS ditolak
+                               FROM etl_audit_log WHERE run_id = ?""", (run["run_id"],))
+    return run
+
+
+@router.get("/pipeline")
+def pipeline() -> Dict[str, Any]:
+    run = last_run()
+    rid = run["run_id"] if run else ""
+    return {
+        "run": run,
+        "audit": rows("SELECT * FROM etl_audit_log WHERE run_id = ? ORDER BY id", (rid,)),
+        "cek": rows("SELECT target_table, rule, result, affected_rows, detail FROM etl_quality_check "
+                    "WHERE run_id = ? ORDER BY id", (rid,)),
+        "riwayat": rows("""SELECT r.run_id, r.started_at, r.status,
+                                  (SELECT SUM(records_loaded) FROM etl_audit_log a WHERE a.run_id = r.run_id) AS baris
+                           FROM etl_run r ORDER BY r.started_at DESC LIMIT 8"""),
+    }
